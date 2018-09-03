@@ -124,14 +124,16 @@ func BubbleList(pkgs Packages, hash Hash) []RevDep {
 			delete(depMap, dephash)
 
 			toUpdate := pkgs[dephash].DirectDeps.Intersect(fullDeps[dephash])
-			indirect := fullDeps[dephash]
 
+			indirect := fullDeps[dephash]
 			delete(fullDeps, dephash)
 			indirect.Del(pruned...)
 			c := toUpdate.Del(pruned...)
 			if c != len(pruned) {
 				panic("direct deps not in package.json")
 			}
+			alsoUpdate := toUpdate.Elms()
+			indirect.Del(alsoUpdate...)
 
 			res = append(res, dephash)
 
@@ -139,7 +141,7 @@ func BubbleList(pkgs Packages, hash Hash) []RevDep {
 				Hash:         dephash,
 				Level:        level,
 				DirectDeps:   pruned,
-				AlsoUpdate:   toUpdate.Elms(),
+				AlsoUpdate:   alsoUpdate,
 				IndirectDeps: indirect.Elms(),
 			})
 		}
