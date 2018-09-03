@@ -44,6 +44,7 @@ func GatherDeps(pkgs Packages, root Hash, pkgDir string) (*PkgInfo, error) {
 	pkg := &PkgInfo{
 		Hash:       root,
 		Name:       jsonPkg.Name,
+		Path:       jsonPkg.Gx.Dvcsimport,
 		Deps:       Packages{},
 		DirectDeps: Packages{},
 	}

@@ -5,6 +5,7 @@ type Hash string
 type PkgInfo struct {
 	Hash       Hash
 	Name       string
+	Path       string
 	DirectDeps Packages
 	Deps       Packages // transitive closure of all deps
 }

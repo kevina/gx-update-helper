@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"encoding/json"
 )
 
 var GOPATH string
@@ -22,6 +23,7 @@ func InitGlobal() error {
 
 type Todo struct {
 	Name       string
+	Path       string
 	Level      int
 	NewHash    Hash     `json:",omitempty"`
 	NewVersion string   `json:",omitempty"`
@@ -51,8 +53,8 @@ func mainFun() error {
 	if err != nil {
 		return err
 	}
-	if len(os.Args) != 3 || os.Args[1] != "rev-deps" {
-		return fmt.Errorf("usage: %s rev-deps <name>", os.Args[0])
+	if len(os.Args) != 3 {
+		return fmt.Errorf("usage: %s rev-deps|rev-deps-json|rev-deps-list <name>", os.Args[0])
 	}
 	pkgs := Packages{}
 	_, err = GatherDeps(pkgs, "", ".")
@@ -69,6 +71,7 @@ func mainFun() error {
 	for _, dep := range lst {
 		todoList = append(todoList, &Todo{
 			Name:       pkgs[dep.Hash].Name,
+			Path:       pkgs[dep.Hash].Path,
 			Level:      dep.Level,
 			OrigHash:   dep.Hash,
 			Deps:       pkgs.Names(dep.DirectDeps),
@@ -77,15 +80,25 @@ func mainFun() error {
 		})
 	}
 	sort.Slice(todoList, func(i, j int) bool { return todoList[i].Less(todoList[j]) })
-	//encoder := json.NewEncoder(os.Stdout)
-	//encoder.Encode(todoList)
-	level := 0
-	for _, todo := range todoList {
-		if level != todo.Level {
-			fmt.Printf("\n")
-			level++
+	switch os.Args[1] {
+	case "rev-deps":
+		level := 0
+		for _, todo := range todoList {
+			if level != todo.Level {
+				fmt.Printf("\n")
+				level++
+			}
+			fmt.Printf("%s :: %s\n", todo.Name, strings.Join(todo.Deps, " "))
 		}
-		fmt.Printf("%s :: %s\n", todo.Name, strings.Join(todo.Deps, " "))
+	case "rev-deps-json":
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.Encode(todoList)
+	case "rev-deps-list":
+		for _, todo := range todoList {
+			fmt.Printf("%s\n", todo.Name)
+		}
+	default:
+		return fmt.Errorf("unknown command: %s", os.Args[1])
 	}
 	return nil
 }
