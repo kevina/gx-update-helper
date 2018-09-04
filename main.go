@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
-	"encoding/json"
 )
 
 var GOPATH string
@@ -21,31 +19,20 @@ func InitGlobal() error {
 	return nil
 }
 
-type Todo struct {
-	Name       string
-	Path       string
-	Level      int
-	NewHash    Hash     `json:",omitempty"`
-	NewVersion string   `json:",omitempty"`
-	OrigHash   Hash     `json:",omitempty"`
-	Deps       []string `json:",omitempty"`
-	AlsoUpdate []string `json:",omitempty"`
-	Indirect   []string `json:",omitempty"`
-}
-
-func (x *Todo) Less(y *Todo) bool {
-	if x.Level != y.Level {
-		return x.Level < y.Level
+func RootPath(path string) (string, error) {
+	rootPath := filepath.Join(GOPATH, "src", path)
+	curDir, err := os.Stat(".")
+	if err != nil {
+		return "", err
 	}
-	if len(x.Deps) != len(y.Deps) {
-		return len(x.Deps) < len(y.Deps)
+	rootDir, err := os.Stat(rootPath)
+	if err != nil {
+		return "", err
 	}
-	for i := 0; i < len(x.Deps); i++ {
-		if x.Deps[i] != y.Deps[i] {
-			return x.Deps[i] < y.Deps[i]
-		}
+	if !os.SameFile(curDir, rootDir) {
+		return "", fmt.Errorf("current directory not the projects root directory")
 	}
-	return x.Name < y.Name
+	return path, nil
 }
 
 func mainFun() error {
@@ -56,30 +43,10 @@ func mainFun() error {
 	if len(os.Args) != 3 {
 		return fmt.Errorf("usage: %s rev-deps|rev-deps-json|rev-deps-list <name>", os.Args[0])
 	}
-	pkgs := Packages{}
-	_, err = GatherDeps(pkgs, "", ".")
+	pkgs, todoList, err := Gather(os.Args[2])
 	if err != nil {
-		return fmt.Errorf("could not gather deps: %s", err.Error())
+		return err
 	}
-	//pkgs.Dump()
-	target := pkgs.ByName(os.Args[2])
-	if target == nil {
-		return fmt.Errorf("package not found: %s", os.Args[2])
-	}
-	lst := BubbleList(pkgs, target.Hash)
-	todoList := []*Todo{}
-	for _, dep := range lst {
-		todoList = append(todoList, &Todo{
-			Name:       pkgs[dep.Hash].Name,
-			Path:       pkgs[dep.Hash].Path,
-			Level:      dep.Level,
-			OrigHash:   dep.Hash,
-			Deps:       pkgs.Names(dep.DirectDeps),
-			AlsoUpdate: pkgs.Names(dep.AlsoUpdate),
-			Indirect:   pkgs.Names(dep.IndirectDeps),
-		})
-	}
-	sort.Slice(todoList, func(i, j int) bool { return todoList[i].Less(todoList[j]) })
 	switch os.Args[1] {
 	case "rev-deps":
 		level := 0
@@ -91,11 +58,41 @@ func mainFun() error {
 			fmt.Printf("%s :: %s\n", todo.Name, strings.Join(todo.Deps, " "))
 		}
 	case "rev-deps-json":
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.Encode(todoList)
+		return todoList.Write(os.Stdout)
 	case "rev-deps-list":
 		for _, todo := range todoList {
-			fmt.Printf("%s\n", todo.Name)
+			fmt.Printf("%s\n", todo.Path)
+		}
+	case "init":
+		rootPath, err := RootPath(pkgs[""].Path)
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(rootPath, ".mygx-workspace.json")
+		todoList.WriteToFile(path)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("MYGX_WORKSPACE=%s\n", path)
+	case "next":
+		todoList, err := ReadTodo()
+		if err != nil {
+			return err
+		}
+		todoByName := map[string]*Todo{}
+		for _, v := range todoList {
+			todoByName[v.Name] = v
+		}
+		for _, v := range todoList {
+			ok := true
+			for _, dep := range v.Deps {
+				if todoByName[dep].NewHash == "" {
+					ok = false
+				}
+			}
+			if ok {
+				fmt.Printf("%s\n", v.Path)
+			}
 		}
 	default:
 		return fmt.Errorf("unknown command: %s", os.Args[1])
