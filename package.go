@@ -1,11 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"path/filepath"
-	"bytes"
-	"fmt"
 )
 
 type PackageFile struct {
@@ -52,11 +52,20 @@ func ReadLastPubVer(dir string) (*LastPubVer, error) {
 	}
 	str = bytes.TrimSpace(str)
 	i := bytes.IndexByte(str, ':')
-	if i == -1 || len(str) < i+1 || str[i+1] != ' '{
+	if i == -1 || len(str) < i+1 || str[i+1] != ' ' {
 		return nil, fmt.Errorf("bad lastpubver string")
 	}
-	return &LastPubVer {
+	return &LastPubVer{
 		Version: string(str[:i-1]),
-		Hash: Hash(str[i+2:]),
+		Hash:    Hash(str[i+2:]),
 	}, nil
+}
+
+func GetGxInfo() (pkg *PackageFile, lastPubVer *LastPubVer, err error) {
+	pkg, err = ReadPackage(".")
+	if err != nil {
+		return
+	}
+	lastPubVer, err = ReadLastPubVer(".")
+	return
 }

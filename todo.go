@@ -14,12 +14,16 @@ type Todo struct {
 	Name       string
 	Path       string
 	Level      int
-	NewHash    Hash     `json:",omitempty"`
-	NewVersion string   `json:",omitempty"`
 	OrigHash   Hash     `json:",omitempty"`
 	Deps       []string `json:",omitempty"`
 	AlsoUpdate []string `json:",omitempty"`
 	Indirect   []string `json:",omitempty"`
+
+	NewHash Hash            `json:",omitempty"`
+	NewDeps map[string]Hash `json:",omitempty"`
+
+	published bool // published and in a valid state
+	next      bool // all name deps published
 }
 
 type TodoList []*Todo
@@ -116,3 +120,36 @@ func (todoList TodoList) CreateMap() (TodoByName, error) {
 	}
 	return byName, nil
 }
+
+func GetTodo() (lst TodoList, byName TodoByName, err error) {
+	lst, err = ReadTodo()
+	if err != nil {
+		return
+	}
+	byName, err = lst.CreateMap()
+	if err != nil {
+		return
+	}
+	UpdateState(lst, byName)
+	return
+}
+
+func UpdateState(lst TodoList, byName TodoByName) {
+	for _, todo := range lst {
+		if todo.NewHash != "" {
+			todo.published = true
+		}
+		for name, hash := range todo.NewDeps {
+			if !byName[name].published || byName[name].NewHash != hash {
+				todo.published = false
+			}
+		}
+		todo.next = true
+		for _, name := range todo.Deps {
+			if !byName[name].published {
+				todo.next = false
+			}
+		}
+	}
+}
+

@@ -109,11 +109,7 @@ func mainFun() error {
 		}
 		fmt.Printf("export MYGX_WORKSPACE=%s\n", path)
 	case "status":
-		todoList, err := ReadTodo()
-		if err != nil {
-			return err
-		}
-		todoByName, err := todoList.CreateMap()
+		todoList, todoByName, err := GetTodo()
 		if err != nil {
 			return err
 		}
@@ -123,94 +119,63 @@ func mainFun() error {
 				fmt.Printf("\n")
 				level++
 			}
-			if v.NewHash != "" {
+			if v.published {
 				fmt.Printf("%s = %s\n", v.Path, v.NewHash)
 				continue
 			}
+			extra := ""
+			if len(v.NewDeps) > 0 {
+				extra = " !!"
+			}
 			deps := []string{}
 			for _, dep := range v.Deps {
-				if todoByName[dep].NewHash == "" {
+				if !todoByName[dep].published {
 					deps = append(deps, dep)
 				}
 			}
 			if len(deps) == 0 {
-				fmt.Printf("%s READY\n", v.Path)
+				fmt.Printf("%s%s READY\n", v.Path, extra)
 				continue
 			}
-			fmt.Printf("%s :: %s\n", v.Path, strings.Join(deps, " "))
+			fmt.Printf("%s%s :: %s\n", v.Path, extra, strings.Join(deps, " "))
 		}
 	case "next":
-		todoList, err := ReadTodo()
+		todoList, _, err := GetTodo()
 		if err != nil {
 			return err
 		}
-		todoByName, err := todoList.CreateMap()
-		if err != nil {
-			return err
-		}
-		for _, v := range todoList {
-			if v.NewHash != "" {
-				continue
-			}
-			ok := true
-			for _, dep := range v.Deps {
-				if todoByName[dep].NewHash == "" {
-					ok = false
-				}
-			}
-			if ok {
-				fmt.Printf("%s\n", v.Path)
+		for _, todo := range todoList {
+			if !todo.published && todo.next {
+				fmt.Printf("%s\n", todo.Path)
 			}
 		}
-	case "sync":
-		todoList, err := ReadTodo()
+	case "published":
+		todoList, todoByName, err := GetTodo()
 		if err != nil {
 			return err
 		}
-		todoByName, err := todoList.CreateMap()
+		pkg, lastPubVer, err := GetGxInfo()
 		if err != nil {
 			return err
 		}
-		pkg, err := ReadPackage(".")
-		if err != nil {
-			return err
-		}
-		lastPubVer, err := ReadLastPubVer(".")
-		if err != nil {
-			return err
-		}
-		v, ok := todoByName[pkg.Name]
+		todo, ok := todoByName[pkg.Name]
 		if !ok {
 			return fmt.Errorf("could not find entry for %s", pkg.Name)
 		}
-		if v.NewHash == lastPubVer.Hash {
-			fmt.Fprintf(os.Stderr, "nothing to change: already marked as published with hash %s\n", v.NewHash)
-			return nil
-		} else if v.OrigHash == lastPubVer.Hash {
-			if v.NewHash == "" {
-				fmt.Fprintf(os.Stderr, "nothing to change: not yet published with new hash %s\n", v.NewHash)
-				return nil
-			} else {
-				v.NewHash = ""
-				fmt.Fprintf(os.Stderr, "resetting state to unpublished\n")
+		todo.NewHash = lastPubVer.Hash
+		depMap := map[string]Hash{}
+		for _, dep := range pkg.GxDependencies {
+			if todoByName[dep.Name] != nil {
+				depMap[dep.Name] = dep.Hash
 			}
-		} else {
-			if v.NewHash != "" {
-				fmt.Fprintf(os.Stderr, "warning: previous published using hash %s\n", v.NewHash)
-			}
-			v.NewHash = lastPubVer.Hash
-			fmt.Fprintf(os.Stderr, "marking state as published with hash %s\n", v.NewHash)
 		}
+		todo.NewDeps = depMap
 		err = todoList.Write()
 		if err != nil {
 			return err
-		}
-	case "update-cmds":
-		todoList, err := ReadTodo()
-		if err != nil {
-			return err
-		}
-		todoByName, err := todoList.CreateMap()
+		}		
+	case "update-list":
+		_, todoByName, err := GetTodo()
 		if err != nil {
 			return err
 		}
@@ -222,28 +187,28 @@ func mainFun() error {
 		if !ok {
 			return fmt.Errorf("could not find entry for %s", pkg.Name)
 		}
-		cmds := []string{}
-		toUpdate := []string{}
+		hashes := []Hash{}
+		notReady := []string{}
 		for _, dep := range todo.Deps {
 			newHash := todoByName[dep].NewHash
 			if newHash == "" {
-				toUpdate = append(toUpdate, dep)
+				notReady = append(notReady, dep)
 			} else {
-				cmds = append(cmds, fmt.Sprintf("gx update %s %s\n", dep, newHash))
+				hashes = append(hashes, newHash)
 			}
 		}
-		if len(toUpdate) > 0 {
-			return fmt.Errorf("not yet updated: %s", strings.Join(toUpdate, " "))
+		if len(notReady) > 0 {
+			return fmt.Errorf("not yet updated: %s", strings.Join(notReady, " "))
 		}
 		for _, dep := range todo.AlsoUpdate {
 			newHash := todoByName[dep].NewHash
 			if newHash == "" {
 				panic("inconsistent internal state")
 			}
-			cmds = append(cmds, fmt.Sprintf("gx update %s %s\n", dep, newHash))
+			hashes = append(hashes, newHash)
 		}
-		for _, cmd := range cmds {
-			os.Stdout.WriteString(cmd)
+		for _, hashes := range hashes {
+			fmt.Printf("%s\n", hashes)
 		}
 	default:
 		return fmt.Errorf("unknown command: %s", os.Args[1])
