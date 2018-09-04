@@ -40,46 +40,89 @@ func mainFun() error {
 	if err != nil {
 		return err
 	}
-	if len(os.Args) < 2 {
+	if len(os.Args) <= 1 {
 		return fmt.Errorf("usage: %s rev-deps|init|next|published| ...", os.Args[0])
 	}
 	switch os.Args[1] {
 	case "rev-deps":
-		if len(os.Args) != 3 {
-			return fmt.Errorf("usage: %s rev-deps <name>", os.Args[0])
+		usage := func() error {
+			return fmt.Errorf("usage: %s rev-deps [--json|--list] <name>", os.Args[0])
 		}
-		_, todoList, err := Gather(os.Args[2])
-		if err != nil {
-			return err
+		if len(os.Args) <= 2 {
+			return usage()
 		}
-		level := 0
-		for _, todo := range todoList {
-			if level != todo.Level {
-				fmt.Printf("\n")
-				level++
+		mode := ""
+		name := ""
+		for _, arg := range os.Args[2:] {
+			if len(arg) > 2 && arg[0:2] == "--" {
+				switch arg[2:] {
+				case "json", "list":
+					mode = arg[2:]
+				default:
+					return usage()
+				}
+			} else if name != "" {
+				return usage()
+			} else {
+				name = arg
 			}
-			fmt.Printf("%s :: %s\n", todo.Path, strings.Join(todo.Deps, " "))
 		}
-	case "rev-deps-json":
-		if len(os.Args) != 3 {
-			return fmt.Errorf("usage: %s rev-deps-json <name>", os.Args[0])
+		if name == "" {
+			return usage()
 		}
-		_, todoList, err := Gather(os.Args[2])
-		if err != nil {
-			return err
+		var todoList TodoList
+		if os.Getenv("MYGX_WORKSPACE") == "" {
+			_, todoList, err = Gather(name)
+			if err != nil {
+				return err
+			}
+		} else {
+			lst, err := ReadTodo()
+			if err != nil {
+				return err
+			}
+			var todo *Todo
+			for _, todo = range lst {
+				if todo.Name == name {
+					break
+				}
+			}
+			if todo == nil {
+				return fmt.Errorf("package not found: %s", name)
+			}
+			deps := NameSet{}
+			deps.Add(name)
+			deps.Add(todo.Deps...)
+			deps.Add(todo.AlsoUpdate...)
+			deps.Add(todo.Indirect...)
+			for _, todo = range lst {
+				if !deps.Has(todo.Name) {
+					continue
+				}
+				todo.ClearState()
+				todoList = append(todoList, todo)
+			}
 		}
-		return todoList.ToJSON(os.Stdout)
-	case "rev-deps-list", "bubble-list":
-		if len(os.Args) != 3 {
-			return fmt.Errorf("usage: %s rev-deps-list <name>", os.Args[0])
+		switch mode {
+		case "":
+			level := 0
+			for _, todo := range todoList {
+				if level != todo.Level {
+					fmt.Printf("\n")
+					level++
+				}
+				fmt.Printf("%s :: %s\n", todo.Path, strings.Join(todo.Deps, " "))
+			}
+		case "json":
+			return todoList.ToJSON(os.Stdout)
+		case "list":
+			for _, todo := range todoList {
+				fmt.Printf("%s\n", todo.Path)
+			}
+		default:
+			panic("internal error")
 		}
-		_, todoList, err := Gather(os.Args[2])
-		if err != nil {
-			return err
-		}
-		for _, todo := range todoList {
-			fmt.Printf("%s\n", todo.Path)
-		}
+		return nil
 	case "init":
 		if len(os.Args) != 3 {
 			return fmt.Errorf("usage: %s init <name>", os.Args[0])
@@ -163,6 +206,7 @@ func mainFun() error {
 			return fmt.Errorf("could not find entry for %s", pkg.Name)
 		}
 		todo.NewHash = lastPubVer.Hash
+		todo.NewVersion = lastPubVer.Version
 		depMap := map[string]Hash{}
 		for _, dep := range pkg.GxDependencies {
 			if todoByName[dep.Name] != nil {
@@ -173,7 +217,7 @@ func mainFun() error {
 		err = todoList.Write()
 		if err != nil {
 			return err
-		}		
+		}
 	case "update-list":
 		_, todoByName, err := GetTodo()
 		if err != nil {
@@ -207,8 +251,27 @@ func mainFun() error {
 			}
 			hashes = append(hashes, newHash)
 		}
-		for _, hashes := range hashes {
-			fmt.Printf("%s\n", hashes)
+		for _, hash := range hashes {
+			fmt.Printf("%s\n", hash)
+		}
+	case "pins":
+		todoList, _, err := GetTodo()
+		if err != nil {
+			return err
+		}
+		unpublished := []string{}
+		for i, todo := range todoList {
+			if todo.published {
+				fmt.Printf("%s %s %s\n", todo.NewHash, todo.Path, todo.NewVersion)
+			} else if i != len(todoList)-1 {
+				// ^^ ignore very last item in the list as it the final
+				// target and does not necessary need to be gx
+				// published
+				unpublished = append(unpublished, todo.Name)
+			}
+		}
+		if len(unpublished) > 0 {
+			return fmt.Errorf("unpublished dependencies: %s", strings.Join(unpublished, " "))
 		}
 	default:
 		return fmt.Errorf("unknown command: %s", os.Args[1])

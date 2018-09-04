@@ -19,11 +19,20 @@ type Todo struct {
 	AlsoUpdate []string `json:",omitempty"`
 	Indirect   []string `json:",omitempty"`
 
-	NewHash Hash            `json:",omitempty"`
-	NewDeps map[string]Hash `json:",omitempty"`
+	NewHash    Hash            `json:",omitempty"`
+	NewVersion string          `json:",omitempty"`
+	NewDeps    map[string]Hash `json:",omitempty"`
 
 	published bool // published and in a valid state
 	next      bool // all name deps published
+}
+
+func (x *Todo) ClearState() {
+	x.NewHash = ""
+	x.NewVersion = ""
+	x.NewDeps = nil
+	x.published = false
+	x.next = false
 }
 
 type TodoList []*Todo
@@ -54,7 +63,7 @@ func Gather(pkgName string) (pkgs Packages, todoList TodoList, err error) {
 	//pkgs.Dump()
 	target := pkgs.ByName(pkgName)
 	if target == nil {
-		err = fmt.Errorf("package not found: %s", os.Args[2])
+		err = fmt.Errorf("package not found: %s", pkgName)
 		return
 	}
 	lst := BubbleList(pkgs, target.Hash)
@@ -152,4 +161,3 @@ func UpdateState(lst TodoList, byName TodoByName) {
 		}
 	}
 }
-

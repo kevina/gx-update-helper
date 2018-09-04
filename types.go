@@ -11,4 +11,3 @@ type PkgInfo struct {
 }
 
 type Packages map[Hash]*PkgInfo
-

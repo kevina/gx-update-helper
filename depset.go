@@ -42,3 +42,18 @@ func (s DepSet) Clone() DepSet {
 	}
 	return new
 }
+
+type NameSet map[string]struct{}
+
+func (s NameSet) Has(hash string) bool {
+	_, ok := s[hash]
+	return ok
+}
+
+func (s NameSet) Add(toAdd ...string) int {
+	origLen := len(s)
+	for _, hash := range toAdd {
+		s[hash] = struct{}{}
+	}
+	return len(s) - origLen
+}
