@@ -41,7 +41,7 @@ func mainFun() error {
 		return err
 	}
 	if len(os.Args) <= 1 {
-		return fmt.Errorf("usage: %s rev-deps|init|next|published| ...", os.Args[0])
+		return fmt.Errorf("usage: %s rev-deps|init|next|published|update-list|to-pin ...", os.Args[0])
 	}
 	switch os.Args[1] {
 	case "rev-deps":
@@ -71,7 +71,7 @@ func mainFun() error {
 			return usage()
 		}
 		var todoList TodoList
-		if os.Getenv("MYGX_WORKSPACE") == "" {
+		if os.Getenv("GX_UPDATE_STATE") == "" {
 			_, todoList, err = Gather(name)
 			if err != nil {
 				return err
@@ -140,7 +140,7 @@ func mainFun() error {
 		if err != nil {
 			return err
 		}
-		path := filepath.Join(rootPath, ".mygx-workspace.json")
+		path := filepath.Join(rootPath, ".gx-update-state.json")
 		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0666)
 		if err != nil {
 			return err
@@ -150,7 +150,7 @@ func mainFun() error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("export MYGX_WORKSPACE=%s\n", path)
+		fmt.Printf("export GX_UPDATE_STATE=%s\n", path)
 	case "status":
 		todoList, todoByName, err := GetTodo()
 		if err != nil {
@@ -254,7 +254,7 @@ func mainFun() error {
 		for _, hash := range hashes {
 			fmt.Printf("%s\n", hash)
 		}
-	case "pins":
+	case "to-pin":
 		todoList, _, err := GetTodo()
 		if err != nil {
 			return err

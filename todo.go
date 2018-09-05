@@ -83,9 +83,9 @@ func Gather(pkgName string) (pkgs Packages, todoList TodoList, err error) {
 }
 
 func ReadTodo() (lst TodoList, err error) {
-	fn := os.Getenv("MYGX_WORKSPACE")
+	fn := os.Getenv("GX_UPDATE_STATE")
 	if fn == "" {
-		err = fmt.Errorf("MYGX_WORKSPACE not set")
+		err = fmt.Errorf("GX_UPDATE_STATE not set")
 		return
 	}
 	bytes, err := ioutil.ReadFile(fn)
@@ -105,9 +105,9 @@ func (todoList TodoList) ToJSON(out io.Writer) error {
 // Write writes the contents back to disk, file must already exist as
 // a safety mechanism
 func (todoList TodoList) Write() error {
-	fn := os.Getenv("MYGX_WORKSPACE")
+	fn := os.Getenv("GX_UPDATE_STATE")
 	if fn == "" {
-		return fmt.Errorf("MYGX_WORKSPACE not set")
+		return fmt.Errorf("GX_UPDATE_STATE not set")
 	}
 	f, err := os.OpenFile(fn, os.O_WRONLY|os.O_TRUNC, 0666)
 	if err != nil {

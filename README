@@ -1,0 +1,110 @@
+gx-update-tracker is a tool to help you keep track of where you are
+during a complex gx-update tha involves lots of decencies
+
+WORK IN PROGRESS
+
+It does not actually do any of the work, but instead aids the process.
+A typical workflow using the tool.
+
+$ cd $GOPATH/src/github.com/go-ipfs
+$ gx-update-tracker init go-cid
+$ export GX_UPDATE_STATE=$GOPATH/src/github.com/go-ipfs/.gx-update-state.json
+$ gx-update-tracker next
+github.com/ipfs/go-cid
+$ cd $GOPATH/src/github.com/ipfs/go-cid
+# merge p.r. etc
+$ gx release minor
+$ gx-update-tracker published
+$ gx-update-tracker next
+$ gx-update-helper next
+github.com/ipfs/go-block-format
+github.com/ipfs/go-cidutil
+github.com/ipfs/go-ipfs-ds-help
+github.com/libp2p/go-libp2p-routing
+github.com/ipfs/go-verifcid
+# can update any, let's just do the first
+$ cd $GOPATH/src/`gx-update-helper next | head`
+# now update go-block-format
+$ gx-update-helper update-list | xargs -n1 gx update
+updating go-cid to version 0.9.0 (QmdvDHNw9F1AHvQuVDazrbYvMsPBC2Bdhenu86hSezqQ1C)
+# compile and test, commit the changes if desired
+$ gx release minor
+$ gx-update-tracker published
+$ cd $GOPATH/src/`gx-update-helper next | head`
+# now on go-cidutil
+# ...
+# when all done and back go to go-ipfs
+$ gx-update-helper to-pin
+
+
+rev-deps [--json|--list] <pkg>
+
+  Dumps information all packages that need to be updated so that <pkg>
+  can be updated in the current package.
+
+  If --list is given just list them in the order (well one order) that
+  they need to be updated in order to finally update <pkg>.
+
+  If --json is given than dump a json list which each object is a
+  dependency with the following fields:
+
+    Name, Path, OrigHash
+    Level: the depth in the rev-dep tree, with <pkg> being at level 0.
+      The dep. within a single level can be updated in any order once all
+      the dep. at the previous level are updated.
+    Deps: dep. of this package at the previous level in the rev-dep tree.
+    AlsoUpdate: additional dep. of this package listed in package.json at
+      lower levels in the rev-dep tree.
+    Indirect: additional dep. of this package not in Deps or AlsoUpdate
+
+  Otherwise the deps. are groupd by level with each dep formated as follows:
+
+    <Path> :: <Deps>
+
+  Where Path and Deps are same values from the JSON output.
+
+  If MYGX_WORKSPACE is not defined the package in the current directly
+  is used as the final taregt.  If it is defined, then the information
+  in that file is used.
+
+init <pkg>
+
+  Start a gx-update session with the goal of gx-updating <pkg> in the
+  packaging residing in the current directory.
+
+  Outputs the new value of MYGX_WORKSPACE
+
+For the remaining command MYGX_WORKSPACE needs to be defined.
+
+next
+
+  Lists the packages that can be updated next.
+
+status
+
+  Dump the current status.  The output is similar to the output
+  default of rev-deps.
+
+  I package has no outstanding dep. that need to be updated will me
+  marked with READY, otherwise the dep. that also need updated are
+  listed after '::'.
+
+  An dep. marked with '!!' means that `published` was run on the
+  current package but the dependencies do not match and is thus in an
+  invalid or outdatted state.
+
+update-list
+
+  If all the dependencies of the current package (as given by the
+  working dir) are updated then list there new hashes.  It is
+  expected that this output in used with gx update.
+
+published
+
+  Once the package is updated and published run this command to update
+  the internal state of the current package.
+
+to-pin
+
+  Lists the published versions of all the packages in order to be able
+  to pin them.
