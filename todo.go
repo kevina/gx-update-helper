@@ -10,6 +10,11 @@ import (
 	//"strings"
 )
 
+type JsonState struct {
+	Todo     []*Todo
+	Defaults map[string]string `json:",omitempty"`
+}
+
 type Todo struct {
 	Name       string
 	Path       string
@@ -23,8 +28,11 @@ type Todo struct {
 	NewVersion string          `json:",omitempty"`
 	NewDeps    map[string]Hash `json:",omitempty"`
 
+	Meta     map[string]string `json:",omitempty"`
+	defaults map[string]string // shared among all todo entries
+
 	published bool // published and in a valid state
-	next      bool // all name deps published
+	ready     bool // all name deps published
 }
 
 func (x *Todo) ClearState() {
@@ -32,7 +40,9 @@ func (x *Todo) ClearState() {
 	x.NewVersion = ""
 	x.NewDeps = nil
 	x.published = false
-	x.next = false
+	x.ready = false
+	x.Meta = nil
+	x.defaults = nil
 }
 
 type TodoList []*Todo
@@ -51,6 +61,88 @@ func (x *Todo) Less(y *Todo) bool {
 		}
 	}
 	return x.Name < y.Name
+}
+
+type NotYetPublished struct {
+	Todo *Todo
+	Key  string
+}
+
+func (e NotYetPublished) Error() string {
+	return fmt.Sprintf("%s: '%s' undefined, not yet published", e.Todo.Path, e.Key)
+}
+
+func (v *Todo) Get(key string) (val string, have bool, err error) {
+	switch key {
+	case "name":
+		val = v.Name
+		have = true
+	case "path":
+		val = v.Path
+		have = true
+	case "ver", "version":
+		if !v.published {
+			err = NotYetPublished{v, key}
+			return
+		}
+		val = v.NewVersion
+		have = true
+	case "hash":
+		if !v.published {
+			err = NotYetPublished{v, key}
+			return
+		}
+		val = string(v.NewHash)
+		have = true
+	case "published":
+		if v.published {
+			val = "="+string(v.NewHash)
+			have = true
+		}
+		// default empty string, no error
+	case "ready":
+		if v.ready {
+			val = "READY"
+			have = true
+		}
+		// default empty string, no error
+	default:
+		val, have = v.Meta[key]
+		if have {
+			return
+		}
+		var ok bool
+		val, ok = v.defaults[key]
+		if ok {
+			return
+		}
+		err = fmt.Errorf("%s: '%s' undefined", v.Path, key)
+	}
+	return
+}
+
+func CheckInternal(key string) error {
+	switch key {
+	case "name", "path", "level", "ver", "version", "hash", "published", "ready", "deps":
+		return fmt.Errorf("cannot set internal value: %s", key)
+	}
+	return nil
+}
+
+func (v *Todo) Set(key string, val string) error {
+	if err := CheckInternal(key); err != nil {
+		return err
+	}
+	v.Meta[key] = val
+	return nil
+}
+
+func (v *Todo) Unset(key string) error {
+	if err := CheckInternal(key); err != nil {
+		return err
+	}
+	delete(v.Meta, key)
+	return nil
 }
 
 func Gather(pkgName string) (pkgs Packages, todoList TodoList, err error) {
@@ -82,7 +174,7 @@ func Gather(pkgName string) (pkgs Packages, todoList TodoList, err error) {
 	return
 }
 
-func ReadTodo() (lst TodoList, err error) {
+func ReadStateFile() (state JsonState, err error) {
 	fn := os.Getenv("GX_UPDATE_STATE")
 	if fn == "" {
 		err = fmt.Errorf("GX_UPDATE_STATE not set")
@@ -92,14 +184,14 @@ func ReadTodo() (lst TodoList, err error) {
 	if err != nil {
 		return
 	}
-	err = json.Unmarshal(bytes, &lst)
+	err = json.Unmarshal(bytes, &state)
 	return
 }
 
-func (todoList TodoList) ToJSON(out io.Writer) error {
+func Encode(out io.Writer, v interface{}) error {
 	encoder := json.NewEncoder(out)
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(todoList)
+	return encoder.Encode(v)
 }
 
 // Write writes the contents back to disk, file must already exist as
@@ -114,7 +206,8 @@ func (todoList TodoList) Write() error {
 		return err
 	}
 	defer f.Close()
-	return todoList.ToJSON(f)
+	state := JsonState{Todo: todoList, Defaults: todoList[0].defaults}
+	return Encode(f, state)
 }
 
 func (todoList TodoList) CreateMap() (TodoByName, error) {
@@ -131,9 +224,17 @@ func (todoList TodoList) CreateMap() (TodoByName, error) {
 }
 
 func GetTodo() (lst TodoList, byName TodoByName, err error) {
-	lst, err = ReadTodo()
+	state, err := ReadStateFile()
 	if err != nil {
 		return
+	}
+	lst = state.Todo
+	defaults := state.Defaults
+	if defaults == nil {
+		defaults = map[string]string{}
+	}
+	for _, todo := range lst {
+		todo.defaults = defaults
 	}
 	byName, err = lst.CreateMap()
 	if err != nil {
@@ -153,10 +254,14 @@ func UpdateState(lst TodoList, byName TodoByName) {
 				todo.published = false
 			}
 		}
-		todo.next = true
+		if todo.published {
+			todo.ready = false
+			continue
+		}
+		todo.ready = true
 		for _, name := range todo.Deps {
 			if !byName[name].published {
-				todo.next = false
+				todo.ready = false
 			}
 		}
 	}
