@@ -1,12 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sort"
-	"bytes"
+	"strings"
 )
 
 var GOPATH string
@@ -99,32 +99,8 @@ func mainFun() error {
 	//	// calls format on current todo
 	case "deps":
 		return depsCmd()
-	case "published": // TODO: Add --reset command
-		todoList, todoByName, err := GetTodo()
-		if err != nil {
-			return err
-		}
-		pkg, lastPubVer, err := GetGxInfo()
-		if err != nil {
-			return err
-		}
-		todo, ok := todoByName[pkg.Name]
-		if !ok {
-			return fmt.Errorf("could not find entry for %s", pkg.Name)
-		}
-		todo.NewHash = lastPubVer.Hash
-		todo.NewVersion = lastPubVer.Version
-		depMap := map[string]Hash{}
-		for _, dep := range pkg.GxDependencies {
-			if todoByName[dep.Name] != nil {
-				depMap[dep.Name] = dep.Hash
-			}
-		}
-		todo.NewDeps = depMap
-		err = todoList.Write()
-		if err != nil {
-			return err
-		}
+	case "published":
+		return publishedCmd()
 	case "to-pin":
 		return toPinCmd()
 	case "meta":
@@ -383,12 +359,72 @@ func depsCmd() error {
 			continue
 		}
 		buf.Write(str)
-		buf.WriteByte('\n');
+		buf.WriteByte('\n')
 	}
 	if errors {
 		return fmt.Errorf("aborting due to previous errors")
 	}
 	os.Stdout.Write(buf.Bytes())
+	return nil
+}
+
+func publishedCmd() error {
+	usage := func() error {
+		return fmt.Errorf("usage: %s published reset|clean", os.Args[0])
+	}
+	mode := "mark"
+	if len(args) > 0 {
+		mode, _ = Shift()
+	}
+	if len(args) > 0 {
+		return usage()
+	}
+	todoList, todoByName, err := GetTodo()
+	if err != nil {
+		return err
+	}
+	switch mode {
+	case "clean":
+		for _, todo := range todoList {
+			if todo.published {
+				continue
+			}
+			todo.NewHash = ""
+			todo.NewVersion = ""
+			todo.NewDeps = nil
+		}
+	case "mark","reset":
+		pkg, lastPubVer, err := GetGxInfo()
+		if err != nil {
+			return err
+		}
+		todo, ok := todoByName[pkg.Name]
+		if !ok {
+			return fmt.Errorf("could not find entry for %s", pkg.Name)
+		}
+		switch mode {
+		case "mark":
+			todo.NewHash = lastPubVer.Hash
+			todo.NewVersion = lastPubVer.Version
+			depMap := map[string]Hash{}
+			for _, dep := range pkg.GxDependencies {
+				if todoByName[dep.Name] != nil {
+					depMap[dep.Name] = dep.Hash
+				}
+			}
+			todo.NewDeps = depMap
+		case "reset":
+			todo.NewHash = ""
+			todo.NewVersion = ""
+			todo.NewDeps = nil
+		}
+	default:
+		return usage()
+	}
+	err = todoList.Write()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
