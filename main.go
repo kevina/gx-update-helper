@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sort"
+	"bytes"
 )
 
 var GOPATH string
@@ -98,7 +99,7 @@ func mainFun() error {
 	//	// calls format on current todo
 	case "deps":
 		return depsCmd()
-	case "published":
+	case "published": // TODO: Add --reset command
 		todoList, todoByName, err := GetTodo()
 		if err != nil {
 			return err
@@ -289,7 +290,7 @@ func listCmd() error {
 		return err
 	}
 	errors := false
-	level := 0
+	level := -1
 	for _, todo := range lst {
 		ok := true
 		if cond != "" {
@@ -307,13 +308,13 @@ func listCmd() error {
 				errors = true
 				continue
 			}
-			if bylevel && todo.Level != level {
+			if bylevel && level != -1 && todo.Level != level {
 				os.Stderr.Write([]byte("\n"))
 			}
-			os.Stderr.Write(str)
-			os.Stderr.Write([]byte("\n"))
+			level = todo.Level
+			os.Stdout.Write(str)
+			os.Stdout.Write([]byte("\n"))
 		}
-		level = todo.Level
 	}
 	if errors {
 		return fmt.Errorf("some entries could not be displayed")
@@ -370,6 +371,7 @@ func depsCmd() error {
 	}
 	sort.Strings(deps)
 	errors := false
+	var buf bytes.Buffer
 	for _, dep := range deps {
 		todo := byName[dep]
 		str, err := todo.Format(fmtstr)
@@ -380,12 +382,13 @@ func depsCmd() error {
 			errors = true
 			continue
 		}
-		os.Stderr.Write(str)
-		os.Stderr.Write([]byte("\n"))
+		buf.Write(str)
+		buf.WriteByte('\n');
 	}
 	if errors {
-		return fmt.Errorf("some deps could not be displayed")
+		return fmt.Errorf("aborting due to previous errors")
 	}
+	os.Stdout.Write(buf.Bytes())
 	return nil
 }
 

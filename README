@@ -1,7 +1,85 @@
 gx-update-tracker is a tool to help you keep track of where you are
-during a complex gx-update tha involves lots of decencies
+during a complex gx-update tha involves lots of decencies.  It follows
+the unix philossogy of do one thing and do it well.  In paricular it
+doesn't do any work itself but keeps track of the state to aid in the
+process.  It is expected that other tools can be written on top of
+this.
 
-WORK IN PROGRESS
+Its advantage of just using `gx-workstation` is it gives you complete
+control over the process while handling all the book keeping for you
+so you don't get lost.  It is escpaclly useful when a decency
+involves breaking changes that need to be fixed manually, or when a
+depency is a work-in-progress and you need to iterate several times
+before getting it right.
+
+This is a WORK IN PROGESS.
+
+The DOCS bwloe are NOW OUT OF DATE but the general idea is as follows
+
+(1) chdir to the go-ipfs or the final target of a decency to bubble up
+
+(2) To update the go-cid decency run `gx-update-tracker init go-cid`
+to start the process.  The stat is written to a json file in the
+current dir
+
+(3) Go to <dep> ad publish the changes you want to bubble up.  After
+wards run "gx-update-tracker published"
+
+(4) Check what downsides can be updated next by running
+`gx-update-tracker deps ready` and pick one.
+
+(5) Run `gx update` on the required dependencies using the tool to help you for example
+`gx-update-tracker deps -f 'gx update $hash' | sh'
+
+(6) Comple and test and commit the results.
+
+(7) publish the package and run `gx-update-tracker published` and
+repeat steps 4-7 for each package
+
+(8) Push the published version of the top most depency (say go-cid)
+using the `hub` tool.  Register the url of the pull request using
+`gx-update-tracker` support for metadata using something like
+`gx-update-tracker meta set push_url <url>`.
+
+(9) Push the published version of the reaming depency.  Use
+`gx-update-tracker` to creating a meaningfull description by listing
+all the dependencies the should go in first using something like:
+```
+  echo 'deps on: ' > msg.txt
+  gx-update-tracker deps -f '   * $push_url' >> msg.txt
+```
+
+(10) Wait until the tests go green and possibly approved.
+
+(11) Iterate over again and merge the branch, closing the pull request.
+
+That assums everything goes smoothly, now lets say while intergrating
+the deps. we decided it would be best to make a API change.  This is
+where `gx-update-tracker` really shines as you have complete control
+over the process.  The steps to redo the change can go something as
+follows
+
+(12) Make the API change to go-cid and republish.  This will
+automatically invalid all published packages that depended on the old
+hash.  So repeat steps similar to (4) - (7) except that you want to
+back out the commit that published the new version by doing something
+like `git reset --hard HEAD^`.
+
+(13) Push the new changes.
+
+Now maybe we are done.  But then again we found another problem, this
+time it is not with `go-cid` but instead `go-ipfs-blockstore`.  No
+problem we simply fix `go-ipfs-blockstore` and repulish.
+`gx-update-tracker` will figure out what deps need to fixed for you.
+So you can repeat (12) but only on the required depences and not the
+complete bubble-list.
+
+(14) Ok Now where done. And the changes are merged into `go-ipfs` we
+clean up by removing the json file used to keep track of the state.
+
+
+### ORIGINAL DRAFT DOCS
+
 
 It does not actually do any of the work, but instead aids the process.
 A typical workflow using the tool.

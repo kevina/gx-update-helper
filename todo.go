@@ -7,7 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"sort"
-	//"strings"
+	"strings"
 )
 
 type JsonState struct {
@@ -96,7 +96,7 @@ func (v *Todo) Get(key string) (val string, have bool, err error) {
 		have = true
 	case "published":
 		if v.published {
-			val = "="+string(v.NewHash)
+			val = "PUBLISHED"
 			have = true
 		}
 		// default empty string, no error
@@ -106,6 +106,9 @@ func (v *Todo) Get(key string) (val string, have bool, err error) {
 			have = true
 		}
 		// default empty string, no error
+	case "deps":
+		val = strings.Join(v.Deps, " ")
+		have = len(v.Deps) > 0
 	default:
 		val, have = v.Meta[key]
 		if have {
@@ -123,7 +126,8 @@ func (v *Todo) Get(key string) (val string, have bool, err error) {
 
 func CheckInternal(key string) error {
 	switch key {
-	case "name", "path", "level", "ver", "version", "hash", "published", "ready", "deps":
+	case "name", "path", "level", "ver", "version", "hash", "published", "ready",
+		"deps", "unmet", "unmetdeps", "status":
 		return fmt.Errorf("cannot set internal value: %s", key)
 	}
 	return nil
