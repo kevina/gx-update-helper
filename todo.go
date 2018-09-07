@@ -21,6 +21,7 @@ type Todo struct {
 	Level      int
 	OrigHash   Hash     `json:",omitempty"`
 	Deps       []string `json:",omitempty"`
+	unmetDeps  []string
 	AlsoUpdate []string `json:",omitempty"`
 	Indirect   []string `json:",omitempty"`
 
@@ -33,6 +34,8 @@ type Todo struct {
 
 	published bool // published and in a valid state
 	ready     bool // all name deps published
+
+	others TodoByName // shared among all todo entries
 }
 
 func (x *Todo) ClearState() {
@@ -109,6 +112,14 @@ func (v *Todo) Get(key string) (val string, have bool, err error) {
 	case "deps":
 		val = strings.Join(v.Deps, " ")
 		have = len(v.Deps) > 0
+	case "unmet", "unmetdeps":
+		val = strings.Join(v.unmetDeps, " ")
+		have = len(v.unmetDeps) > 0
+	case "invalidated":
+		if len(v.NewDeps) > 0 && !v.published {
+			val = "INVALIDATED"
+			have = true
+		}
 	default:
 		val, have = v.Meta[key]
 		if have {
@@ -127,7 +138,7 @@ func (v *Todo) Get(key string) (val string, have bool, err error) {
 func CheckInternal(key string) error {
 	switch key {
 	case "name", "path", "level", "ver", "version", "hash", "published", "ready",
-		"deps", "unmet", "unmetdeps", "status":
+		"deps", "unmet", "unmetdeps", "status", "invalidated":
 		return fmt.Errorf("cannot set internal value: %s", key)
 	}
 	return nil
@@ -237,12 +248,13 @@ func GetTodo() (lst TodoList, byName TodoByName, err error) {
 	if defaults == nil {
 		defaults = map[string]string{}
 	}
-	for _, todo := range lst {
-		todo.defaults = defaults
-	}
 	byName, err = lst.CreateMap()
 	if err != nil {
 		return
+	}
+	for _, todo := range lst {
+		todo.defaults = defaults
+		todo.others = byName
 	}
 	UpdateState(lst, byName)
 	return
@@ -265,6 +277,7 @@ func UpdateState(lst TodoList, byName TodoByName) {
 		todo.ready = true
 		for _, name := range todo.Deps {
 			if !byName[name].published {
+				todo.unmetDeps = append(todo.unmetDeps, name)
 				todo.ready = false
 			}
 		}

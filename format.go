@@ -1,12 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode"
-	"strconv"
-	"errors"
-	"bytes"
 )
 
 var BadFormatStr = fmt.Errorf("bad format string")
@@ -29,13 +29,18 @@ func (v *Todo) format(orig string) (buf bytes.Buffer, str string, err error) {
 	for len(str) > 0 {
 		switch str[0] {
 		case '\\':
-			ch, _, s, e := strconv.UnquoteChar(str, 0)
-			if e != nil {
-				err = e
-				return
+			if len(str) >= 2 && asciiIsSymbol(str[1]) {
+				buf.WriteByte(str[1])
+				str = str[2:]
+			} else {
+				ch, _, s, e := strconv.UnquoteChar(str, 0)
+				if e != nil {
+					err = BadFormatStr
+					return
+				}
+				str = s
+				buf.WriteRune(ch)
 			}
-			str = s
-			buf.WriteRune(ch)
 		case '[':
 			b, s, e := v.format(str[1:])
 			if e == BadFormatStr {
@@ -59,7 +64,7 @@ func (v *Todo) format(orig string) (buf bytes.Buffer, str string, err error) {
 			if str[0] == '{' {
 				i := strings.IndexByte(str, '}')
 				if i == -1 {
-					err =  BadFormatStr
+					err = BadFormatStr
 					return
 				}
 				key = str[1:i]
@@ -97,4 +102,8 @@ func (v *Todo) format(orig string) (buf bytes.Buffer, str string, err error) {
 		}
 	}
 	return
+}
+
+func asciiIsSymbol(ch byte) bool {
+	return '!' <= ch && ch <=  '/' || ':' <= ch && ch <=  '@' || '[' <= ch && ch <=  '`' || '{' <= ch && ch <=  '~'
 }
