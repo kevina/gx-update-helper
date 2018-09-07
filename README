@@ -1,20 +1,20 @@
 gx-update-tracker is a tool to help you keep track of where you are
 during a complex gx-update tha involves lots of decencies.  It follows
-the unix philossogy of do one thing and do it well.  In paricular it
+the unix philology of do one thing and do it well.  In particular it
 doesn't do any work itself but keeps track of the state to aid in the
 process.  It is expected that other tools can be written on top of
 this.
 
 Its advantage of just using `gx-workstation` is it gives you complete
 control over the process while handling all the book keeping for you
-so you don't get lost.  It is escpaclly useful when a decency
+so you don't get lost.  It is especially useful when a decency
 involves breaking changes that need to be fixed manually, or when a
-depency is a work-in-progress and you need to iterate several times
+dependency is a work-in-progress and you need to iterate several times
 before getting it right.
 
-This is a WORK IN PROGESS.
+This is a WORK IN PROGRESS.
 
-The DOCS bwloe are NOW OUT OF DATE but the general idea is as follows
+The DOCS below are NOW OUT OF DATE but the general idea is as follows
 
 (1) chdir to the go-ipfs or the final target of a decency to bubble up
 
@@ -31,18 +31,18 @@ wards run "gx-update-tracker published"
 (5) Run `gx update` on the required dependencies using the tool to help you for example
 `gx-update-tracker deps -f 'gx update $hash' | sh'
 
-(6) Comple and test and commit the results.
+(6) Compile and test and commit the results.
 
 (7) publish the package and run `gx-update-tracker published` and
 repeat steps 4-7 for each package
 
-(8) Push the published version of the top most depency (say go-cid)
-using the `hub` tool.  Register the url of the pull request using
+(8) Push the published version of the top most dependency (say go-cid)
+using the `hub` tool.  Register the URL of the pull request using
 `gx-update-tracker` support for metadata using something like
 `gx-update-tracker meta set push_url <url>`.
 
-(9) Push the published version of the reaming depency.  Use
-`gx-update-tracker` to creating a meaningfull description by listing
+(9) Push the published version of the reaming dependency.  Use
+`gx-update-tracker` to creating a meaningful description by listing
 all the dependencies the should go in first using something like:
 ```
   echo 'deps on: ' > msg.txt
@@ -53,7 +53,7 @@ all the dependencies the should go in first using something like:
 
 (11) Iterate over again and merge the branch, closing the pull request.
 
-That assums everything goes smoothly, now lets say while intergrating
+That assumes everything goes smoothly, now lets say while integrating
 the deps. we decided it would be best to make a API change.  This is
 where `gx-update-tracker` really shines as you have complete control
 over the process.  The steps to redo the change can go something as
@@ -69,14 +69,28 @@ like `git reset --hard HEAD^`.
 
 Now maybe we are done.  But then again we found another problem, this
 time it is not with `go-cid` but instead `go-ipfs-blockstore`.  No
-problem we simply fix `go-ipfs-blockstore` and repulish.
+problem we simply fix `go-ipfs-blockstore` and republish.
 `gx-update-tracker` will figure out what deps need to fixed for you.
-So you can repeat (12) but only on the required depences and not the
+So you can repeat (12) but only on the required dependencies and not the
 complete bubble-list.
+
+OOPS.  There is a bug in go-cid all the discovered all the way down
+in go-merkledag.  We really need to work on on unwritten tree to do
+this, but really don't fell like downloading _everything_.  No problem
+`gx-update-helper` to the rescue.
+```
+for d in `gx-update-helper deps all -f $GOPATH/src/'$path'`;
+do (
+  echo $d && \
+  cd $d && \
+  gx-go rewrite --fix && \
+  gx-go rewrite && \
+  gx-update-helper deps all -f 'gx-go rewrite --undo $name' | sh
+) done
+```
 
 (14) Ok Now where done. And the changes are merged into `go-ipfs` we
 clean up by removing the json file used to keep track of the state.
-
 
 ### ORIGINAL DRAFT DOCS
 
