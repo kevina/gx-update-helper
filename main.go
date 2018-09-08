@@ -433,6 +433,23 @@ func publishedCmd() error {
 }
 
 func toPinCmd() error {
+	usage := func() error {
+		return fmt.Errorf("usage: %s to-pin -f <fmtstr>", os.Args[0])
+	}
+	var ok bool
+	fmtstr := "$hash $path $version"
+	for len(args) > 0 {
+		arg, _ := Shift()
+		switch arg {
+		case "-f":
+			fmtstr, ok = Shift()
+			if !ok {
+				return usage()
+			}
+		default:
+			return usage()
+		}
+	}
 	todoList, _, err := GetTodo()
 	if err != nil {
 		return err
@@ -440,7 +457,12 @@ func toPinCmd() error {
 	unpublished := []string{}
 	for i, todo := range todoList {
 		if todo.published {
-			fmt.Printf("%s %s %s\n", todo.NewHash, todo.Path, todo.NewVersion)
+			bytes, err := todo.Format(fmtstr)
+			if err != nil {
+				return err
+			}
+			os.Stdout.Write(bytes)
+			os.Stdout.Write([]byte("\n"))
 		} else if i != len(todoList)-1 {
 			// ^^ ignore very last item in the list as it the final
 			// target and does not necessary need to be gx
