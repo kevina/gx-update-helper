@@ -63,36 +63,11 @@ func mainFun() error {
 	case "init":
 		return initCmd()
 	case "status":
-		todoList, todoByName, err := GetTodo()
-		if err != nil {
-			return err
-		}
-		level := 0
-		for _, v := range todoList {
-			if level != v.Level {
-				fmt.Printf("\n")
-				level++
-			}
-			if v.published {
-				fmt.Printf("%s = %s\n", v.Path, v.NewHash)
-				continue
-			}
-			extra := ""
-			if len(v.NewDeps) > 0 {
-				extra = " !!"
-			}
-			deps := []string{}
-			for _, dep := range v.Deps {
-				if !todoByName[dep].published {
-					deps = append(deps, dep)
-				}
-			}
-			if len(deps) == 0 {
-				fmt.Printf("%s%s READY\n", v.Path, extra)
-				continue
-			}
-			fmt.Printf("%s%s :: %s\n", v.Path, extra, strings.Join(deps, " "))
-		}
+		 if len(args) != 0 {
+			 return fmt.Errorf("usgae: %s status", os.Args[0])
+		 }
+		args = []string{"-f", "$path[ ($invalidated)][ = $hash][ $ready][ :: $unmet]", "--by-level"}
+		return listCmd()
 	case "list":
 		return listCmd()
 	//case "info":
@@ -108,7 +83,6 @@ func mainFun() error {
 	default:
 		return fmt.Errorf("unknown command: %s", os.Args[1])
 	}
-	return nil
 }
 
 func revDepsCmd() error {
