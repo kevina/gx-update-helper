@@ -3,11 +3,11 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-	"io/ioutil"
 )
 
 var GOPATH string
@@ -66,7 +66,7 @@ func mainFun() error {
 	case "status":
 		if len(args) != 0 {
 			return fmt.Errorf("usgae: %s status", os.Args[0])
-		 }
+		}
 		args = []string{"-f", "$path[ ($invalidated)][ = $hash][ $ready][ :: $unmet]", "--by-level"}
 		return listCmd()
 	case "state":
@@ -286,54 +286,75 @@ func listCmd() error {
 
 func depsCmd() error {
 	usage := func() error {
-		return fmt.Errorf("usage: %s deps [-f <fmtstr>] [direct] [also] [to-update] [indirect] [all]", os.Args[0])
-	}
-	_, byName, err := GetTodo()
-	if err != nil {
-		return err
-	}
-	pkg, err := ReadPackage(".")
-	if err != nil {
-		return err
-	}
-	todo, ok := byName[pkg.Name]
-	if !ok {
-		return fmt.Errorf("could not find entry for %s", pkg.Name)
+		return fmt.Errorf("usage: %s deps [-f <fmtstr>] [-p <pkg>] [direct] [also] [to-update] [indirect] [all]", os.Args[0])
 	}
 	fmtstr := "$path"
-	which := map[int][]string{}
+	pkgName := ""
+	which := map[int]string{}
 	for len(args) > 0 {
 		arg, _ := Shift()
 		switch arg {
 		case "direct":
-			which[1] = todo.Deps
+			which[1] = "direct"
 		case "also":
-			which[2] = todo.AlsoUpdate
-		case "to-update":
-			which[1] = todo.Deps
-			which[2] = todo.AlsoUpdate
+			which[2] = "also"
+		case "to-update", "specified":
+			which[1] = "direct"
+			which[2] = "also"
 		case "indirect":
-			which[3] = todo.Indirect
+			which[3] = "indirect"
 		case "all":
-			which[1] = todo.Deps
-			which[2] = todo.AlsoUpdate
-			which[3] = todo.Indirect
+			which[1] = "direct"
+			which[2] = "also"
+			which[3] = "indirect"
 		case "-f":
 			arg, ok := Shift()
 			if !ok {
 				return usage()
 			}
 			fmtstr = arg
+		case "-p":
+			arg, ok := Shift()
+			if !ok {
+				return usage()
+			}
+			pkgName = arg
 		default:
 			return usage()
 		}
 	}
 	if len(which) == 0 {
-		which[1] = todo.Deps
+		which[1] = "direct"
 	}
+
+	_, byName, err := GetTodo()
+	if err != nil {
+		return err
+	}
+	if pkgName == "" {
+		pkg, err := ReadPackage(".")
+		if err != nil {
+			return err
+		}
+		pkgName = pkg.Name
+	}
+	todo, ok := byName[pkgName]
+	if !ok {
+		return fmt.Errorf("could not find entry for %s", pkgName)
+	}
+
 	deps := []string{}
 	for _, d := range which {
-		deps = append(deps, d...)
+		switch d {
+		case "direct":
+			deps = append(deps, todo.Deps...)
+		case "also":
+			deps = append(deps, todo.AlsoUpdate...)
+		case "indirect":
+			deps = append(deps, todo.Indirect...)
+		default:
+			panic("internal error")
+		}
 	}
 	sort.Strings(deps)
 	errors := false
@@ -383,7 +404,7 @@ func publishedCmd() error {
 			todo.NewVersion = ""
 			todo.NewDeps = nil
 		}
-	case "mark","reset":
+	case "mark", "reset":
 		pkg, lastPubVer, err := GetGxInfo()
 		if err != nil {
 			return err
@@ -464,14 +485,32 @@ func toPinCmd() error {
 }
 
 func metaCmd() error {
+	usage := func() error {
+		return fmt.Errorf("usage: %s meta [-p <pkg>] get|set|unset|vals|default ...", os.Args[0])
+	}
 	lst, byName, err := GetTodo()
 	if err != nil {
 		return err
 	}
 	arg, ok := Shift()
 	if !ok {
-		return fmt.Errorf("usage: %s meta get|set|unset|vals|default ...", os.Args[0])
+		return usage()
 	}
+	pkgName := ""
+	notUsed := make([]string, 0, len(args))
+	for len(args) > 0 {
+		arg, _ := Shift()
+		if arg == "-p" {
+			arg, ok := Shift()
+			if !ok {
+				return usage()
+			}
+			pkgName = arg
+		} else {
+			notUsed = append(notUsed, arg)
+		}
+	}
+	args = notUsed
 	modified := false
 	if arg == "default" {
 		arg, ok := Shift()
@@ -483,13 +522,16 @@ func metaCmd() error {
 			return err
 		}
 	} else {
-		pkg, err := ReadPackage(".")
-		if err != nil {
-			return err
+		if pkgName == "" {
+			pkg, err := ReadPackage(".")
+			if err != nil {
+				return err
+			}
+			pkgName = pkg.Name
 		}
-		todo, ok := byName[pkg.Name]
+		todo, ok := byName[pkgName]
 		if !ok {
-			return fmt.Errorf("could not find entry for %s", pkg.Name)
+			return fmt.Errorf("could not find entry for %s", pkgName)
 		}
 		if todo.Meta == nil {
 			todo.Meta = map[string]string{}
