@@ -56,7 +56,7 @@ func ReadLastPubVer(dir string) (*LastPubVer, error) {
 		return nil, fmt.Errorf("bad lastpubver string")
 	}
 	return &LastPubVer{
-		Version: string(str[:i-1]),
+		Version: string(str[:i]),
 		Hash:    Hash(str[i+2:]),
 	}, nil
 }
