@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -83,6 +84,18 @@ func (v *Todo) Get(key string) (val string, have bool, err error) {
 	case "path":
 		val = v.Path
 		have = true
+	case "dir":
+		dirs := []string{GOPATH, "src"}
+		dirs = append(dirs, strings.Split(v.Path, "/")...)
+		val = filepath.Join(dirs...)
+		have = true
+	case "giturl":
+		i := strings.IndexByte(v.Path, '/')
+		if i == -1 {
+			panic("ill formed path")
+		}
+		val = fmt.Sprintf("git@%s:%s.git", v.Path[:i], v.Path[i+1:])
+		have = true
 	case "ver", "version":
 		if !v.published {
 			err = NotYetPublished{v, key}
@@ -137,7 +150,8 @@ func (v *Todo) Get(key string) (val string, have bool, err error) {
 
 func CheckInternal(key string) error {
 	switch key {
-	case "name", "path", "level", "ver", "version", "hash", "published", "ready",
+	case "name", "path", "dir", "giturl",
+		"level", "ver", "version", "hash", "published", "ready",
 		"deps", "unmet", "unmetdeps", "status", "invalidated":
 		return fmt.Errorf("cannot set internal value: %s", key)
 	}
