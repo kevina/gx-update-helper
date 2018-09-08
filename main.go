@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"io/ioutil"
 )
 
 var GOPATH string
@@ -63,11 +64,22 @@ func mainFun() error {
 	case "init":
 		return initCmd()
 	case "status":
-		 if len(args) != 0 {
-			 return fmt.Errorf("usgae: %s status", os.Args[0])
+		if len(args) != 0 {
+			return fmt.Errorf("usgae: %s status", os.Args[0])
 		 }
 		args = []string{"-f", "$path[ ($invalidated)][ = $hash][ $ready][ :: $unmet]", "--by-level"}
 		return listCmd()
+	case "state":
+		fn := os.Getenv("GX_UPDATE_STATE")
+		if fn == "" {
+			return fmt.Errorf("GX_UPDATE_STATE not set")
+		}
+		bytes, err := ioutil.ReadFile(fn)
+		if err != nil {
+			return err
+		}
+		_, err = os.Stdout.Write(bytes)
+		return err
 	case "list":
 		return listCmd()
 	//case "info":
@@ -364,7 +376,7 @@ func publishedCmd() error {
 	switch mode {
 	case "clean":
 		for _, todo := range todoList {
-			if todo.published {
+			if todo.Published {
 				continue
 			}
 			todo.NewHash = ""
@@ -399,6 +411,7 @@ func publishedCmd() error {
 	default:
 		return usage()
 	}
+	UpdateState(todoList, todoByName)
 	err = todoList.Write()
 	if err != nil {
 		return err
@@ -430,7 +443,7 @@ func toPinCmd() error {
 	}
 	unpublished := []string{}
 	for i, todo := range todoList {
-		if todo.published {
+		if todo.Published {
 			bytes, err := todo.Format(fmtstr)
 			if err != nil {
 				return err

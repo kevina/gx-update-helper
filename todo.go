@@ -22,9 +22,10 @@ type Todo struct {
 	Level      int
 	OrigHash   Hash     `json:",omitempty"`
 	Deps       []string `json:",omitempty"`
-	unmetDeps  []string
 	AlsoUpdate []string `json:",omitempty"`
 	Indirect   []string `json:",omitempty"`
+
+	UnmetDeps  []string `json:",omitempty"`
 
 	NewHash    Hash            `json:",omitempty"`
 	NewVersion string          `json:",omitempty"`
@@ -33,20 +34,22 @@ type Todo struct {
 	Meta     map[string]string `json:",omitempty"`
 	defaults map[string]string // shared among all todo entries
 
-	published bool // published and in a valid state
-	ready     bool // all name deps published
+	Published bool // published and in a valid state
+	Ready     bool // all name deps published
 
 	others TodoByName // shared among all todo entries
 }
 
 func (x *Todo) ClearState() {
-	x.NewHash = ""
-	x.NewVersion = ""
-	x.NewDeps = nil
-	x.published = false
-	x.ready = false
-	x.Meta = nil
-	x.defaults = nil
+	*x = Todo{
+		Name: x.Name,
+		Path: x.Path,
+		Level: x.Level,
+		OrigHash: x.OrigHash,
+		Deps: x.Deps,
+		AlsoUpdate: x.AlsoUpdate,
+		Indirect: x.Indirect,
+	}
 }
 
 type TodoList []*Todo
@@ -97,27 +100,27 @@ func (v *Todo) Get(key string) (val string, have bool, err error) {
 		val = fmt.Sprintf("git@%s:%s.git", v.Path[:i], v.Path[i+1:])
 		have = true
 	case "ver", "version":
-		if !v.published {
+		if !v.Published {
 			err = NotYetPublished{v, key}
 			return
 		}
 		val = v.NewVersion
 		have = true
 	case "hash":
-		if !v.published {
+		if !v.Published {
 			err = NotYetPublished{v, key}
 			return
 		}
 		val = string(v.NewHash)
 		have = true
 	case "published":
-		if v.published {
+		if v.Published {
 			val = "PUBLISHED"
 			have = true
 		}
 		// default empty string, no error
 	case "ready":
-		if v.ready {
+		if v.Ready {
 			val = "READY"
 			have = true
 		}
@@ -126,10 +129,10 @@ func (v *Todo) Get(key string) (val string, have bool, err error) {
 		val = strings.Join(v.Deps, " ")
 		have = len(v.Deps) > 0
 	case "unmet", "unmetdeps":
-		val = strings.Join(v.unmetDeps, " ")
-		have = len(v.unmetDeps) > 0
+		val = strings.Join(v.UnmetDeps, " ")
+		have = len(v.UnmetDeps) > 0
 	case "invalidated":
-		if len(v.NewDeps) > 0 && !v.published {
+		if len(v.NewDeps) > 0 && !v.Published {
 			val = "INVALIDATED"
 			have = true
 		}
@@ -270,29 +273,28 @@ func GetTodo() (lst TodoList, byName TodoByName, err error) {
 		todo.defaults = defaults
 		todo.others = byName
 	}
-	UpdateState(lst, byName)
 	return
 }
 
 func UpdateState(lst TodoList, byName TodoByName) {
 	for _, todo := range lst {
 		if todo.NewHash != "" {
-			todo.published = true
+			todo.Published = true
 		}
 		for name, hash := range todo.NewDeps {
-			if !byName[name].published || byName[name].NewHash != hash {
-				todo.published = false
+			if !byName[name].Published || byName[name].NewHash != hash {
+				todo.Published = false
 			}
 		}
-		if todo.published {
-			todo.ready = false
+		if todo.Published {
+			todo.Ready = false
 			continue
 		}
-		todo.ready = true
+		todo.Ready = true
 		for _, name := range todo.Deps {
-			if !byName[name].published {
-				todo.unmetDeps = append(todo.unmetDeps, name)
-				todo.ready = false
+			if !byName[name].Published {
+				todo.UnmetDeps = append(todo.UnmetDeps, name)
+				todo.Ready = false
 			}
 		}
 	}
