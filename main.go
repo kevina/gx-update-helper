@@ -315,23 +315,23 @@ func depsCmd() error {
 		return fmt.Errorf("could not find entry for %s", pkg.Name)
 	}
 	fmtstr := "$path"
-	deps := []string{}
+	which := map[int][]string{}
 	for len(args) > 0 {
 		arg, _ := Shift()
 		switch arg {
 		case "direct":
-			deps = append(deps, todo.Deps...)
+			which[1] = todo.Deps
 		case "also":
-			deps = append(deps, todo.AlsoUpdate...)
+			which[2] = todo.AlsoUpdate
 		case "to-update":
-			deps = append(deps, todo.Deps...)
-			deps = append(deps, todo.AlsoUpdate...)
+			which[1] = todo.Deps
+			which[2] = todo.AlsoUpdate
 		case "indirect":
-			deps = append(deps, todo.Indirect...)
+			which[3] = todo.Indirect
 		case "all":
-			deps = append(deps, todo.Deps...)
-			deps = append(deps, todo.Indirect...)
-			deps = append(deps, todo.AlsoUpdate...)
+			which[1] = todo.Deps
+			which[2] = todo.AlsoUpdate
+			which[3] = todo.Indirect
 		case "-f":
 			arg, ok := Shift()
 			if !ok {
@@ -342,8 +342,12 @@ func depsCmd() error {
 			return usage()
 		}
 	}
-	if len(deps) == 0 {
-		deps = append(deps, todo.Deps...)
+	if len(which) == 0 {
+		which[1] = todo.Deps
+	}
+	deps := []string{}
+	for _, d := range which {
+		deps = append(deps, d...)
 	}
 	sort.Strings(deps)
 	errors := false
