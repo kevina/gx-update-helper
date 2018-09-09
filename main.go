@@ -56,11 +56,11 @@ func mainFun() error {
 	}
 	cmd, ok := Shift()
 	if !ok {
-		return fmt.Errorf("usage: %s rev-deps|init|status|list|deps|published|to-pin|meta", os.Args[0])
+		return fmt.Errorf("usage: %s preview|init|status|list|deps|published|to-pin|meta", os.Args[0])
 	}
 	switch cmd {
-	case "rev-deps":
-		return revDepsCmd()
+	case "preview":
+		return previewCmd()
 	case "init":
 		return initCmd()
 	case "status":
@@ -97,9 +97,9 @@ func mainFun() error {
 	}
 }
 
-func revDepsCmd() error {
+func previewCmd() error {
 	usage := func() error {
-		return fmt.Errorf("usage: %s rev-deps [--json|--list] <name>", os.Args[0])
+		return fmt.Errorf("usage: %s preview [--json|--list] [-f <fmtstr>] <dep>", os.Args[0])
 	}
 	var err error
 	if len(os.Args) <= 2 {
@@ -107,71 +107,58 @@ func revDepsCmd() error {
 	}
 	mode := ""
 	name := ""
-	for _, arg := range os.Args[2:] {
-		if len(arg) > 2 && arg[0:2] == "--" {
-			switch arg[2:] {
-			case "json", "list":
-				mode = arg[2:]
-			default:
+	fmtstr := ""
+	for len(args) > 0 {
+		arg, _ := Shift()
+		switch arg {
+		case "--json":
+			mode = "json"
+		case "--list":
+			mode = "list"
+		case "-f":
+			arg, ok := Shift()
+			if !ok {usage()}
+			fmtstr = arg
+		default:
+			if arg == "" || arg[0] == '-' {
 				return usage()
 			}
-		} else if name != "" {
-			return usage()
-		} else {
 			name = arg
 		}
 	}
-	if name == "" {
-		return usage()
-	}
-	var todoList TodoList
-	if os.Getenv("GX_UPDATE_STATE") == "" {
-		_, todoList, err = Gather(name)
-		if err != nil {
-			return err
-		}
-	} else {
-		state, err := ReadStateFile()
-		if err != nil {
-			return err
-		}
-		var todo *Todo
-		for _, todo = range state.Todo {
-			if todo.Name == name {
-				break
-			}
-		}
-		if todo == nil {
-			return fmt.Errorf("package not found: %s", name)
-		}
-		deps := NameSet{}
-		deps.Add(name)
-		deps.Add(todo.Deps...)
-		deps.Add(todo.AlsoUpdate...)
-		deps.Add(todo.Indirect...)
-		for _, todo = range state.Todo {
-			if !deps.Has(todo.Name) {
-				continue
-			}
-			todo.ClearState()
-			todoList = append(todoList, todo)
-		}
+	_, todoList, err := Gather(name)
+	if err != nil {
+		return err
 	}
 	switch mode {
 	case "":
+		if fmtstr == "" {
+			fmtstr = "$path[ :: $deps]"
+		}
 		level := 0
 		for _, todo := range todoList {
 			if level != todo.Level {
 				fmt.Printf("\n")
 				level++
 			}
-			fmt.Printf("%s :: %s\n", todo.Path, strings.Join(todo.Deps, " "))
+			str, err := todo.Format(fmtstr)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("%s\n", str)
 		}
 	case "json":
 		return Encode(os.Stdout, todoList)
 	case "list":
+		if fmtstr == "" {
+			fmtstr = "$path"
+		}
 		for _, todo := range todoList {
-			fmt.Printf("%s\n", todo.Path)
+			str, err := todo.Format(fmtstr)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("%s\n", str)
 		}
 	default:
 		panic("internal error")
@@ -274,8 +261,7 @@ func listCmd() error {
 				os.Stderr.Write([]byte("\n"))
 			}
 			level = todo.Level
-			os.Stdout.Write(str)
-			os.Stdout.Write([]byte("\n"))
+			fmt.Printf("%s\n", str)
 		}
 	}
 	if errors {
@@ -465,12 +451,11 @@ func toPinCmd() error {
 	unpublished := []string{}
 	for i, todo := range todoList {
 		if todo.Published {
-			bytes, err := todo.Format(fmtstr)
+			str, err := todo.Format(fmtstr)
 			if err != nil {
 				return err
 			}
-			os.Stdout.Write(bytes)
-			os.Stdout.Write([]byte("\n"))
+			fmt.Printf("%s\n", bytes)
 		} else if i != len(todoList)-1 {
 			// ^^ ignore very last item in the list as it the final
 			// target and does not necessary need to be gx

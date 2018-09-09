@@ -40,18 +40,6 @@ type Todo struct {
 	others TodoByName // shared among all todo entries
 }
 
-func (x *Todo) ClearState() {
-	*x = Todo{
-		Name: x.Name,
-		Path: x.Path,
-		Level: x.Level,
-		OrigHash: x.OrigHash,
-		Deps: x.Deps,
-		AlsoUpdate: x.AlsoUpdate,
-		Indirect: x.Indirect,
-	}
-}
-
 type TodoList []*Todo
 type TodoByName map[string]*Todo
 
