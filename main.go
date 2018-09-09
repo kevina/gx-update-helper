@@ -141,7 +141,7 @@ are listed.
 The -f option can be used to customize the output.  It defaults to
 '$path[ :: $deps]' for the normal output and '$path' if the --list
 option is given.
-`,
+` + FormatHelp(BasicKeys),
 	Run: previewCmdRun,
 }
 
@@ -305,16 +305,16 @@ var listCmd = Command{
 	Help: `
 Lists all the dep. optionally matching a condition in useful ways.
 
-The -f can be used to custom the output and defaults to '$path'
+The -f option can be used to custom the output and defaults to '$path'.
 
 The --by-level option groups the dep. based on level in the
 reverse dep. graph.
-
+`+ FormatHelp(AllKeys) + `
 EXAMPLES
 
 To list all packages that are ready to be updated by directory:
   gx-update-helper deps ready -f '$dir'
-`+ reqGxUpdateState,
+` + reqGxUpdateState,
 	Run: listCmdRun,
 }
 
@@ -404,8 +404,8 @@ lists the depences as given by the following arguments:
   indirect:
   all:
 
-If -f option defaults to '$path'
-`+ reqGxUpdateState,
+If the -f option is omitted, it defaults to '$path'.
+`+ FormatHelp(AllKeys) + reqGxUpdateState,
 	Run: depsCmdRun,
 }
 
@@ -589,7 +589,7 @@ List the pins of all packages once done.  It will return an error if
 all but the last package is not yet publicized.
 
 The default value for -f is '$hash $path $version'
-`+ reqGxUpdateState,
+`+ FormatHelp(AllKeys) + reqGxUpdateState,
 	Run: toPinCmdRun,
 }
 

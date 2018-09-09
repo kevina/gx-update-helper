@@ -11,6 +11,20 @@ import (
 
 var BadFormatStr = fmt.Errorf("bad format string")
 
+func FormatHelp(keys []KeyDesc) string {
+	return `
+<fmtstr> syntax:
+  $<var>:  The value of a preset or user-set variable. Will error if the 
+           variable is not defined without a default value.
+  [...]:   Only displays the text if all variables used inside are defined.
+           For example to only display the '::' if there are unmet deps. use:
+              $path[ :: $unmet]
+  \<byte>: Standard backslash escaping.
+
+preset variables:
+` + KeysHelp(keys)
+}
+
 func (v *Todo) Format(fmtorig string) ([]byte, error) {
 	buf, fmt, err := v.format(fmtorig)
 	if err != nil && err != defaultUsed {
@@ -105,5 +119,5 @@ func (v *Todo) format(orig string) (buf bytes.Buffer, str string, err error) {
 }
 
 func asciiIsSymbol(ch byte) bool {
-	return '!' <= ch && ch <=  '/' || ':' <= ch && ch <=  '@' || '[' <= ch && ch <=  '`' || '{' <= ch && ch <=  '~'
+	return '!' <= ch && ch <= '/' || ':' <= ch && ch <= '@' || '[' <= ch && ch <= '`' || '{' <= ch && ch <= '~'
 }

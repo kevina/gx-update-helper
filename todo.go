@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"text/tabwriter"
 )
 
 type JsonState struct {
@@ -25,7 +27,7 @@ type Todo struct {
 	AlsoUpdate []string `json:",omitempty"`
 	Indirect   []string `json:",omitempty"`
 
-	UnmetDeps  []string `json:",omitempty"`
+	UnmetDeps []string `json:",omitempty"`
 
 	NewHash    Hash            `json:",omitempty"`
 	NewVersion string          `json:",omitempty"`
@@ -65,6 +67,48 @@ type NotYetPublished struct {
 
 func (e NotYetPublished) Error() string {
 	return fmt.Sprintf("%s: '%s' undefined, not yet published", e.Todo.Path, e.Key)
+}
+
+type KeyDesc struct {
+	Name   string
+	Alias  string
+	Desc   string
+	Unused bool
+}
+
+var BasicKeys = []KeyDesc{
+	{Name: "name", Desc: "package name"},
+	{Name: "path", Desc: "import path"},
+	{Name: "dir", Desc: "directory package is located in"},
+	{Name: "giturl", Desc: "git url for downloading packages"},
+	{Name: "deps", Desc: "space sperated list of direct deps."},
+}
+
+var AllKeys = append(BasicKeys, []KeyDesc{
+	{Name: "ready", Desc: "the string READY if all deps. are published"},
+	{Name: "published", Desc: "the string PUBLISHED if published"},
+	{Name: "invalidated", Desc: "the string INVALIDATED if invalidated"},
+	{Name: "ver", Desc: "current version if published", Alias: "version"},
+	{Name: "hash", Desc: "current hash if published"},
+	{Name: "unmet", Desc: "space seperated list of unmet deps.", Alias: "unmetdeps"},
+	{Name: "level", Unused: true},
+}...)
+
+func KeysHelp(keys []KeyDesc) string {
+	var buf bytes.Buffer
+	tw := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
+	for _, kd := range keys {
+		if kd.Unused {
+			continue
+		}
+		if kd.Alias == "" {
+			fmt.Fprintf(tw, "  %s\t%s\n", kd.Name, kd.Desc)
+		} else {
+			fmt.Fprintf(tw, "  %s|%s\t%s\n", kd.Name, kd.Alias, kd.Desc)
+		}
+	}
+	tw.Flush()
+	return buf.String()
 }
 
 func (v *Todo) Get(key string) (val string, have bool, err error) {
@@ -140,11 +184,10 @@ func (v *Todo) Get(key string) (val string, have bool, err error) {
 }
 
 func CheckInternal(key string) error {
-	switch key {
-	case "name", "path", "dir", "giturl",
-		"level", "ver", "version", "hash", "published", "ready",
-		"deps", "unmet", "unmetdeps", "status", "invalidated":
-		return fmt.Errorf("cannot set internal value: %s", key)
+	for _, kd := range AllKeys {
+		if key == kd.Name || key == kd.Alias {
+			return fmt.Errorf("cannot set internal value: %s", key)
+		}
 	}
 	return nil
 }
