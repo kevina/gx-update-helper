@@ -14,12 +14,14 @@ var BadFormatStr = fmt.Errorf("bad format string")
 func FormatHelp(keys []KeyDesc) string {
 	return `
 <fmtstr> syntax:
-  $<var>:  The value of a preset or user-set variable. Will error if the 
-           variable is not defined without a default value.
-  [...]:   Only displays the text if all variables used inside are defined.
-           For example to only display the '::' if there are unmet deps. use:
-              $path[ :: $unmet]
-  \<byte>: Standard backslash escaping.
+  $<var>:   The value of a preset or user-set variable. Must be followed
+            by something other than a letter, number or _.
+            Will error if the variable is not defined without a default value.
+  ${<var>}: Alternative syntax.
+  [...]:    Only displays the text if all variables used inside are defined.
+            For example to only display the '::' if there are unmet deps. use:
+               $path[ :: $unmet]
+  \...:     Standard backslash escaping.
 
 preset variables:
 ` + KeysHelp(keys)
