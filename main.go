@@ -39,6 +39,7 @@ func RootPath(path string) (string, error) {
 }
 
 var args = os.Args[1:]
+var curCmd *Command
 
 func Shift() (string, bool) {
 	if len(args) == 0 {
@@ -49,61 +50,105 @@ func Shift() (string, bool) {
 	return arg, true
 }
 
+type Command struct {
+	Name    string
+	Tagline string
+	Usage   string
+	Help    string
+	Run     func() error
+}
+
+var reqGxUpdateState =
+	"\nRequires the GX_UPDATE_STATE env. variable to be set.  See init sub-command."
+
+func UsageErr() error {
+	return fmt.Errorf("%s %s\n", os.Args[0], curCmd.Usage)
+}
+
+var cmds = []*Command{
+	&previewCmd,
+	&initCmd,
+	&statusCmd,
+	&stateCmd,
+	&listCmd,
+	&depsCmd,
+	&publishedCmd,
+	&metaCmd,
+}
+
 func mainFun() error {
 	err := InitGlobal()
 	if err != nil {
 		return err
 	}
-	cmd, ok := Shift()
-	if !ok {
-		return fmt.Errorf("usage: %s preview|init|status|list|deps|published|to-pin|meta", os.Args[0])
+	cmd := ""
+	rest := []string{}
+	showHelp := false
+	for len(args) != 0 {
+		arg, _ := Shift()
+		switch {
+		case arg == "-h" || arg == "--help":
+			showHelp = true
+		case len(arg) > 0 && arg[0] == '-':
+			rest = append(rest, arg)
+		case cmd == "":
+			cmd = arg
+		default:
+			rest = append(rest, arg)
+		}
 	}
-	switch cmd {
-	case "preview":
-		return previewCmd()
-	case "init":
-		return initCmd()
-	case "status":
-		if len(args) != 0 {
-			return fmt.Errorf("usgae: %s status", os.Args[0])
+	usageErr := fmt.Errorf("Usage: %s [-h] preview|init|status|list|deps|published|to-pin|meta", os.Args[0])
+	if !showHelp && cmd == "" {
+		return usageErr
+	}
+	if showHelp && cmd == "" {
+		fmt.Printf("%s\n\n", usageErr.Error())
+		for _, c := range cmds {
+			fmt.Printf("  %-10s %s\n", c.Name, c.Tagline)
 		}
-		args = []string{"-f", "$path[ ($invalidated)][ = $hash][ $ready][ :: $unmet]", "--by-level"}
-		return listCmd()
-	case "state":
-		fn := os.Getenv("GX_UPDATE_STATE")
-		if fn == "" {
-			return fmt.Errorf("GX_UPDATE_STATE not set")
+		fmt.Printf("\n")
+		return nil
+	}
+	for _, c := range cmds {
+		if c.Name == cmd {
+			curCmd = c
+			break
 		}
-		bytes, err := ioutil.ReadFile(fn)
-		if err != nil {
-			return err
-		}
-		_, err = os.Stdout.Write(bytes)
-		return err
-	case "list":
-		return listCmd()
-	//case "info":
-	//	// calls format on current todo
-	case "deps":
-		return depsCmd()
-	case "published":
-		return publishedCmd()
-	case "to-pin":
-		return toPinCmd()
-	case "meta":
-		return metaCmd()
-	default:
-		return fmt.Errorf("unknown command: %s", os.Args[1])
+	}
+	if curCmd == nil {
+		return fmt.Errorf("unknown command: %s", cmd)
+	}
+	if showHelp {
+		fmt.Printf("Usage: %s %s\n", os.Args[0], curCmd.Usage)
+		fmt.Printf("%s\n", curCmd.Help)
+		return nil
+	} else {
+		return curCmd.Run()
 	}
 }
 
-func previewCmd() error {
-	usage := func() error {
-		return fmt.Errorf("usage: %s preview [--json|--list] [-f <fmtstr>] <dep>", os.Args[0])
-	}
+var previewCmd = Command{
+	Name:    "preview",
+	Tagline: "Show dep. that need to be changed to change <dep> in current package",
+	Usage:   "preview [--json|--list] [-f <fmtstr>] <dep>",
+	Help: `
+Show decencies that need to be changed in order to change <dep> in the
+current package.  The normal output lists each decency and what that
+decency directly depends on.  If --json is given a more detailed
+output is given is using JSON.  If --list is given just the decencies
+are listed.
+
+The -f option can be used to customize the output.  It defaults to
+'$path[ :: $deps]' for the normal output and '$path' if the --list
+option is given.
+`,
+	Run: previewCmdRun,
+}
+
+func previewCmdRun() error {
 	var err error
 	if len(os.Args) <= 2 {
-		return usage()
+		return UsageErr()
 	}
 	mode := ""
 	name := ""
@@ -117,11 +162,13 @@ func previewCmd() error {
 			mode = "list"
 		case "-f":
 			arg, ok := Shift()
-			if !ok {usage()}
+			if !ok {
+				UsageErr()
+			}
 			fmtstr = arg
 		default:
 			if arg == "" || arg[0] == '-' {
-				return usage()
+				return UsageErr()
 			}
 			name = arg
 		}
@@ -166,9 +213,26 @@ func previewCmd() error {
 	return nil
 }
 
-func initCmd() error {
+var initCmd = Command{
+	Name:    "init",
+	Tagline: "Starts a new session for updating <dep> in the current package",
+	Usage:   "init <name>",
+	Help: `
+Starts a new session for updating <dep> in the current package.  It
+creates a JSON file. '.gx-update-state.json', to keep track of the
+current state in the curent directory.  All command except this one
+and 'preview' expect the location to be set in the GX_UPDATE_STATE
+environmental variable.  
+
+The command will output the necessary command to set this variable to
+the correct value for Bourne shells
+`,
+	Run: initCmdRun,
+}
+
+func initCmdRun() error {
 	if len(os.Args) != 3 {
-		return fmt.Errorf("usage: %s init <name>", os.Args[0])
+		return fmt.Errorf("usage: %s init <dep>", os.Args[0])
 	}
 	pkgs, todoList, err := Gather(os.Args[2])
 	if err != nil {
@@ -198,10 +262,63 @@ func initCmd() error {
 	return nil
 }
 
-func listCmd() error {
-	usage := func() error {
-		return fmt.Errorf("usage: %s list [-f <fmtstr>] [--by-level] [not] ready|published|<user-cond>", os.Args[0])
-	}
+var statusCmd = Command{
+	Name:    "status",
+	Tagline: "Show current status.",
+	Usage:   "status",
+	Help: `
+Show current status.
+
+Alias for: list -f '$path[ ($invalidated)][ = $hash][ $ready][ :: $unmet]' --by-level
+`+ reqGxUpdateState,
+	Run: func() error {
+		args = []string{"-f", "$path[ ($invalidated)][ = $hash][ $ready][ :: $unmet]", "--by-level"}
+		return listCmdRun()
+	},
+}
+
+var stateCmd = Command{
+	Name:    "state",
+	Tagline: "Show state as JSON file",
+	Usage:   "state",
+	Help: `
+Show state as JSON file
+`+ reqGxUpdateState,
+	Run: func() error {
+		fn := os.Getenv("GX_UPDATE_STATE")
+		if fn == "" {
+			return fmt.Errorf("GX_UPDATE_STATE not set")
+		}
+		bytes, err := ioutil.ReadFile(fn)
+		if err != nil {
+			return err
+		}
+		_, err = os.Stdout.Write(bytes)
+		return err
+	},
+}
+
+var listCmd = Command{
+	Name:    "list",
+	Tagline: "Lists all dep. optionally matching a condition in useful ways",
+	Usage:   "list [-f <fmtstr>] [--by-level] [not] [ready|published|<user-cond>]",
+	Help: `
+Lists all the dep. optionally matching a condition in useful ways.
+
+The -f can be used to custom the output and defaults to '$path'
+
+The --by-level option groups the dep. based on level in the
+reverse dep. graph.
+
+EXAMPLES
+
+To list all packages that are ready to be updated by directory:
+  gx-update-helper deps ready -f '$dir'
+`+ reqGxUpdateState,
+	Run: listCmdRun,
+}
+
+func listCmdRun() error {
 	var ok bool
 	invert := false
 	cond := ""
@@ -213,26 +330,26 @@ func listCmd() error {
 		case "-f":
 			fmtstr, ok = Shift()
 			if !ok {
-				return usage()
+				return UsageErr()
 			}
 		case "not":
 			invert = true
 			cond, ok = Shift()
 			if !ok {
-				return usage()
+				return UsageErr()
 			}
 		case "--by-level":
 			bylevel = true
 		default:
 			if len(arg) > 0 && arg[0] == '-' {
-				return usage()
+				return UsageErr()
 			}
 			cond = arg
 			break
 		}
 	}
 	if len(args) != 0 {
-		return usage()
+		return UsageErr()
 	}
 	lst, _, err := GetTodo()
 	if err != nil {
@@ -270,10 +387,29 @@ func listCmd() error {
 	return nil
 }
 
-func depsCmd() error {
-	usage := func() error {
-		return fmt.Errorf("usage: %s deps [-f <fmtstr>] [-p <pkg>] [direct] [also] [to-update] [indirect] [all]", os.Args[0])
-	}
+var depsCmd = Command{
+	Name:    "deps",
+	Tagline: "List dep. of current package",
+	Usage:   "deps [-f <fmtstr>] [-p <pkg>] [direct] [also] [to-update] [indirect] [all]",
+	Help: `
+List dependencies of current or specified package.  The '-p' option
+specifies the package to use.  If it is omitted the current package is
+used instead.
+
+If no additional arguments are given list the direct dep.  Otherwise
+lists the depences as given by the following arguments:
+  direct:
+  also: non-direct dep. also listed in package.json
+  to-update|specified: all dep. listed on package.json
+  indirect:
+  all:
+
+If -f option defaults to '$path'
+`+ reqGxUpdateState,
+	Run: depsCmdRun,
+}
+
+func depsCmdRun() error {
 	fmtstr := "$path"
 	pkgName := ""
 	which := map[int]string{}
@@ -296,17 +432,17 @@ func depsCmd() error {
 		case "-f":
 			arg, ok := Shift()
 			if !ok {
-				return usage()
+				return UsageErr()
 			}
 			fmtstr = arg
 		case "-p":
 			arg, ok := Shift()
 			if !ok {
-				return usage()
+				return UsageErr()
 			}
 			pkgName = arg
 		default:
-			return usage()
+			return UsageErr()
 		}
 	}
 	if len(which) == 0 {
@@ -365,16 +501,35 @@ func depsCmd() error {
 	return nil
 }
 
-func publishedCmd() error {
-	usage := func() error {
-		return fmt.Errorf("usage: %s published reset|clean", os.Args[0])
-	}
+var publishedCmd = Command{
+	Name:    "published",
+	Tagline: "change the published state of a package",
+	Usage:   "published reset|clean",
+	Help: `
+Change the publihsed state of a package.
+
+With no arguments the current package will be mark as potently being
+published with the hash as given in .gx/lastpubver.  It also record
+the hash of the deps as given in package.json.  The package will only
+be marked as published if all those hashes match the recorded
+published hash, otherwise the package will be marked as being in an
+invalidated state.
+
+If the 'reset' argument is given then clear the published into.
+
+If the 'clean' option is given remove the published info state of ALL
+packages in an invalidated state.
+`+ reqGxUpdateState,
+	Run: publishedCmdRun,
+}
+
+func publishedCmdRun() error {
 	mode := "mark"
 	if len(args) > 0 {
 		mode, _ = Shift()
 	}
 	if len(args) > 0 {
-		return usage()
+		return UsageErr()
 	}
 	todoList, todoByName, err := GetTodo()
 	if err != nil {
@@ -416,7 +571,7 @@ func publishedCmd() error {
 			todo.NewDeps = nil
 		}
 	default:
-		return usage()
+		return UsageErr()
 	}
 	UpdateState(todoList, todoByName)
 	err = todoList.Write()
@@ -426,10 +581,19 @@ func publishedCmd() error {
 	return nil
 }
 
-func toPinCmd() error {
-	usage := func() error {
-		return fmt.Errorf("usage: %s to-pin -f <fmtstr>", os.Args[0])
-	}
+var toPinCmd = Command{
+	Tagline: "list the pins of packages once done",
+	Usage:   "to-pin -f <fmtstr>",
+	Help: `
+List the pins of all packages once done.  It will return an error if
+all but the last package is not yet publicized.
+
+The default value for -f is '$hash $path $version'
+`+ reqGxUpdateState,
+	Run: toPinCmdRun,
+}
+
+func toPinCmdRun() error {
 	var ok bool
 	fmtstr := "$hash $path $version"
 	for len(args) > 0 {
@@ -438,10 +602,10 @@ func toPinCmd() error {
 		case "-f":
 			fmtstr, ok = Shift()
 			if !ok {
-				return usage()
+				return UsageErr()
 			}
 		default:
-			return usage()
+			return UsageErr()
 		}
 	}
 	todoList, _, err := GetTodo()
@@ -455,7 +619,7 @@ func toPinCmd() error {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("%s\n", bytes)
+			fmt.Printf("%s\n", str)
 		} else if i != len(todoList)-1 {
 			// ^^ ignore very last item in the list as it the final
 			// target and does not necessary need to be gx
@@ -469,17 +633,33 @@ func toPinCmd() error {
 	return nil
 }
 
-func metaCmd() error {
-	usage := func() error {
-		return fmt.Errorf("usage: %s meta [-p <pkg>] get|set|unset|vals|default ...", os.Args[0])
-	}
+var metaCmd = Command{
+	Name: "meta",
+	Tagline: "Change the state of meta-data for a package.",
+	Usage:   "meta [-p <pkg>] get|set|unset|vals|default ...",
+	Help: `
+Manipulate the state of meta-data for a package.
+
+The current package is used unless the '-p' option is given.  The
+following subcommands are provided:
+
+  get <key>
+  unset <key> <val>
+  set <key>
+  vals: list all key/val pairs
+  default get|unset|set|vals: change the default state
+`+ reqGxUpdateState,
+	Run: metaCmdRun,
+}
+
+func metaCmdRun() error {
 	lst, byName, err := GetTodo()
 	if err != nil {
 		return err
 	}
 	arg, ok := Shift()
 	if !ok {
-		return usage()
+		return UsageErr()
 	}
 	pkgName := ""
 	notUsed := make([]string, 0, len(args))
@@ -488,7 +668,7 @@ func metaCmd() error {
 		if arg == "-p" {
 			arg, ok := Shift()
 			if !ok {
-				return usage()
+				return UsageErr()
 			}
 			pkgName = arg
 		} else {
