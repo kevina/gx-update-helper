@@ -14,6 +14,9 @@ involves breaking changes that need to be fixed manually, or when a
 dependency is a work-in-progress and you need to iterate several times
 before getting it right.
 
+Experimental, I wrote it to suit my own needs.  The interface may
+change at any time.
+
 ## Install
 
 ```
