@@ -97,6 +97,7 @@ func mainFun() error {
 			rest = append(rest, arg)
 		}
 	}
+	args = rest
 	usageErr := fmt.Errorf("Usage: %s [-h] preview|init|status|list|deps|published|to-pin|meta", os.Args[0])
 	if !showHelp && cmd == "" {
 		return usageErr
