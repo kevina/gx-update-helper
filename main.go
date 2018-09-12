@@ -58,8 +58,7 @@ type Command struct {
 	Run     func() error
 }
 
-var reqGxUpdateState =
-	"\nRequires the GX_UPDATE_STATE env. variable to be set.  See init sub-command."
+var reqGxUpdateState = "\nRequires the GX_UPDATE_STATE env. variable to be set.  See init sub-command."
 
 func UsageErr() error {
 	return fmt.Errorf("%s %s\n", os.Args[0], curCmd.Usage)
@@ -73,6 +72,7 @@ var cmds = []*Command{
 	&listCmd,
 	&depsCmd,
 	&publishedCmd,
+	&toPinCmd,
 	&metaCmd,
 }
 
@@ -271,7 +271,7 @@ var statusCmd = Command{
 Show current status.
 
 Alias for: list -f '$path[ ($invalidated)][ = $hash][ $ready][ :: $unmet]' --by-level
-`+ reqGxUpdateState,
+` + reqGxUpdateState,
 	Run: func() error {
 		args = []string{"-f", "$path[ ($invalidated)][ = $hash][ $ready][ :: $unmet]", "--by-level"}
 		return listCmdRun()
@@ -284,7 +284,7 @@ var stateCmd = Command{
 	Usage:   "state",
 	Help: `
 Show state as JSON file
-`+ reqGxUpdateState,
+` + reqGxUpdateState,
 	Run: func() error {
 		fn := os.Getenv("GX_UPDATE_STATE")
 		if fn == "" {
@@ -310,7 +310,7 @@ The -f option can be used to custom the output and defaults to '$path'.
 
 The --by-level option groups the dep. based on level in the
 reverse dep. graph.
-`+ FormatHelp(AllKeys) + `
+` + FormatHelp(AllKeys) + `
 EXAMPLES
 
 To list all packages that are ready to be updated by directory:
@@ -406,7 +406,7 @@ lists the depences as given by the following arguments:
   all:
 
 If the -f option is omitted, it defaults to '$path'.
-`+ FormatHelp(AllKeys) + reqGxUpdateState,
+` + FormatHelp(AllKeys) + reqGxUpdateState,
 	Run: depsCmdRun,
 }
 
@@ -520,7 +520,7 @@ If the 'reset' argument is given then clear the published into.
 
 If the 'clean' option is given remove the published info state of ALL
 packages in an invalidated state.
-`+ reqGxUpdateState,
+` + reqGxUpdateState,
 	Run: publishedCmdRun,
 }
 
@@ -583,6 +583,7 @@ func publishedCmdRun() error {
 }
 
 var toPinCmd = Command{
+	Name:    "to-pin",
 	Tagline: "list the pins of packages once done",
 	Usage:   "to-pin -f <fmtstr>",
 	Help: `
@@ -590,7 +591,7 @@ List the pins of all packages once done.  It will return an error if
 all but the last package is not yet publicized.
 
 The default value for -f is '$hash $path $version'
-`+ FormatHelp(AllKeys) + reqGxUpdateState,
+` + FormatHelp(AllKeys) + reqGxUpdateState,
 	Run: toPinCmdRun,
 }
 
@@ -635,7 +636,7 @@ func toPinCmdRun() error {
 }
 
 var metaCmd = Command{
-	Name: "meta",
+	Name:    "meta",
 	Tagline: "Change the state of meta-data for a package.",
 	Usage:   "meta [-p <pkg>] get|set|unset|vals|default ...",
 	Help: `
@@ -649,7 +650,7 @@ following subcommands are provided:
   set <key>
   vals: list all key/val pairs
   default get|unset|set|vals: change the default state
-`+ reqGxUpdateState,
+` + reqGxUpdateState,
 	Run: metaCmdRun,
 }
 

@@ -319,9 +319,11 @@ func UpdateState(lst TodoList, byName TodoByName) {
 		}
 		if todo.Published {
 			todo.Ready = false
+			todo.UnmetDeps = nil
 			continue
 		}
 		todo.Ready = true
+		todo.UnmetDeps = nil
 		for _, name := range todo.Deps {
 			if !byName[name].Published {
 				todo.UnmetDeps = append(todo.UnmetDeps, name)
