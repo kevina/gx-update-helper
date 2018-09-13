@@ -16,18 +16,22 @@ import (
 type JsonState struct {
 	Todo     []*Todo
 	Defaults map[string]string `json:",omitempty"`
+	Orig     map[string]Hash
 }
 
 type Todo struct {
-	Name       string
-	Path       string
-	Level      int
-	OrigHash   Hash     `json:",omitempty"`
+	Name  string
+	Path  string
+	Level int
+
+	OrigHash Hash `json:",omitempty"`
+
 	Deps       []string `json:",omitempty"`
 	AlsoUpdate []string `json:",omitempty"`
 	Indirect   []string `json:",omitempty"`
 
 	UnmetDeps []string `json:",omitempty"`
+	DupDeps   []string `json:",omitempty"`
 
 	NewHash    Hash            `json:",omitempty"`
 	NewVersion string          `json:",omitempty"`
@@ -39,7 +43,8 @@ type Todo struct {
 	Published bool // published and in a valid state
 	Ready     bool // all name deps published
 
-	others TodoByName // shared among all todo entries
+	others TodoByName      // shared among all todo entries
+	orig   map[string]Hash // shared among all todo entries
 }
 
 type TodoList []*Todo
@@ -163,6 +168,9 @@ func (v *Todo) Get(key string) (val string, have bool, err error) {
 	case "unmet", "unmetdeps":
 		val = strings.Join(v.UnmetDeps, " ")
 		have = len(v.UnmetDeps) > 0
+	case "dups", "dupdeps":
+		val = strings.Join(v.DupDeps, " ")
+		have = len(v.DupDeps) > 0
 	case "invalidated":
 		if len(v.NewDeps) > 0 && !v.Published {
 			val = "INVALIDATED"
@@ -208,7 +216,7 @@ func (v *Todo) Unset(key string) error {
 	return nil
 }
 
-func Gather(pkgName string) (pkgs Packages, todoList TodoList, err error) {
+func Gather(pkgName string) (pkgs Packages, todoList TodoList, orig map[string]Hash, err error) {
 	pkgs = Packages{}
 	_, err = GatherDeps(pkgs, "", ".")
 	if err != nil {
@@ -234,6 +242,28 @@ func Gather(pkgName string) (pkgs Packages, todoList TodoList, err error) {
 		})
 	}
 	sort.Slice(todoList, func(i, j int) bool { return todoList[i].Less(todoList[j]) })
+
+	// Create map of original hashes as an extra check.  If we have a
+	// dup then just ignore it but issue a warning
+	orig = map[string]Hash{}
+	for hash, dep := range pkgs {
+		_, ok := orig[dep.Name]
+		if !ok {
+			orig[dep.Name] = hash
+		} else {
+			orig[dep.Name] = "!" // marker
+		}
+	}
+	dups := []string{}
+	for name, hash := range orig {
+		if hash == "!" {
+			dups = append(dups, name)
+			delete(orig, name)
+		}
+	}
+	if len(dups) > 0 {
+		fmt.Fprintf(os.Stderr, "Warning: duplicate deps found for: %s\n", strings.Join(dups, " "))
+	}
 	return
 }
 
@@ -269,7 +299,7 @@ func (todoList TodoList) Write() error {
 		return err
 	}
 	defer f.Close()
-	state := JsonState{Todo: todoList, Defaults: todoList[0].defaults}
+	state := JsonState{Todo: todoList, Defaults: todoList[0].defaults, Orig: todoList[0].orig}
 	return Encode(f, state)
 }
 
@@ -286,7 +316,7 @@ func (todoList TodoList) CreateMap() (TodoByName, error) {
 	return byName, nil
 }
 
-func GetTodo() (lst TodoList, byName TodoByName, err error) {
+func GetTodo() (lst TodoList, byName TodoByName, orig map[string]Hash, err error) {
 	state, err := ReadStateFile()
 	if err != nil {
 		return
@@ -300,34 +330,43 @@ func GetTodo() (lst TodoList, byName TodoByName, err error) {
 	if err != nil {
 		return
 	}
+	orig = state.Orig
 	for _, todo := range lst {
 		todo.defaults = defaults
 		todo.others = byName
+		todo.orig = orig
 	}
 	return
 }
 
-func UpdateState(lst TodoList, byName TodoByName) {
+func UpdateState(lst TodoList, byName TodoByName, orig map[string]Hash) {
 	for _, todo := range lst {
+		todo.UnmetDeps = nil
+		todo.DupDeps = nil
 		if todo.NewHash != "" {
 			todo.Published = true
 		}
 		for name, hash := range todo.NewDeps {
-			if !byName[name].Published || byName[name].NewHash != hash {
+			if byName[name] == nil {
+				h, ok := orig[name]
+				if ok && hash != h {
+					todo.Published = false
+					todo.DupDeps = append(todo.DupDeps, name)
+				}
+			} else if byName[name].NewHash != hash {
 				todo.Published = false
 			}
 		}
-		if todo.Published {
+		if todo.Published || len(todo.DupDeps) > 0 {
 			todo.Ready = false
-			todo.UnmetDeps = nil
 			continue
 		}
 		todo.Ready = true
-		todo.UnmetDeps = nil
 		for _, name := range todo.Deps {
 			if !byName[name].Published {
 				todo.UnmetDeps = append(todo.UnmetDeps, name)
 				todo.Ready = false
+				todo.Published = false
 			}
 		}
 	}
