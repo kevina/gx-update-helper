@@ -174,7 +174,7 @@ func previewCmdRun() error {
 			name = arg
 		}
 	}
-	_, todoList, err := Gather(name)
+	_, todoList, _, err := Gather(name)
 	if err != nil {
 		return err
 	}
@@ -235,15 +235,15 @@ func initCmdRun() error {
 	if len(os.Args) != 3 {
 		return fmt.Errorf("usage: %s init <dep>", os.Args[0])
 	}
-	pkgs, todoList, err := Gather(os.Args[2])
+	pkgs, todoList, orig, err := Gather(os.Args[2])
 	if err != nil {
 		return err
 	}
-	// Make sure there are no duplicate entries
-	_, err = todoList.CreateMap()
+	byName, err := todoList.CreateMap()
 	if err != nil {
 		return err
 	}
+	UpdateState(todoList, byName, orig)
 	rootPath, err := RootPath(pkgs[""].Path)
 	if err != nil {
 		return err
@@ -254,7 +254,7 @@ func initCmdRun() error {
 		return err
 	}
 	defer f.Close()
-	state := JsonState{Todo: todoList}
+	state := JsonState{Todo: todoList, Orig: orig}
 	err = Encode(f, state)
 	if err != nil {
 		return err
@@ -270,10 +270,10 @@ var statusCmd = Command{
 	Help: `
 Show current status.
 
-Alias for: list -f '$path[ ($invalidated)][ = $hash][ $ready][ :: $unmet]' --by-level
+Alias for: list -f '$path[ ($invalidated)][ = $hash][ $ready][ :: $unmet][ DUP DEPS FOR: $dups]' --by-level
 ` + reqGxUpdateState,
 	Run: func() error {
-		args = []string{"-f", "$path[ ($invalidated)][ = $hash][ $ready][ :: $unmet]", "--by-level"}
+		args = []string{"-f", "$path[ ($invalidated)][ = $hash][ $ready][ :: $unmet][ DUP DEPS FOR: $dups]", "--by-level"}
 		return listCmdRun()
 	},
 }
@@ -352,7 +352,7 @@ func listCmdRun() error {
 	if len(args) != 0 {
 		return UsageErr()
 	}
-	lst, _, err := GetTodo()
+	lst, _, _, err := GetTodo()
 	if err != nil {
 		return err
 	}
@@ -450,7 +450,7 @@ func depsCmdRun() error {
 		which[1] = "direct"
 	}
 
-	_, byName, err := GetTodo()
+	_, byName, _, err := GetTodo()
 	if err != nil {
 		return err
 	}
@@ -532,10 +532,11 @@ func publishedCmdRun() error {
 	if len(args) > 0 {
 		return UsageErr()
 	}
-	todoList, todoByName, err := GetTodo()
+	todoList, todoByName, orig, err := GetTodo()
 	if err != nil {
 		return err
 	}
+	var finalErr error
 	switch mode {
 	case "clean":
 		for _, todo := range todoList {
@@ -546,6 +547,7 @@ func publishedCmdRun() error {
 			todo.NewVersion = ""
 			todo.NewDeps = nil
 		}
+		UpdateState(todoList, todoByName, orig)
 	case "mark", "reset":
 		pkg, lastPubVer, err := GetGxInfo()
 		if err != nil {
@@ -561,25 +563,31 @@ func publishedCmdRun() error {
 			todo.NewVersion = lastPubVer.Version
 			depMap := map[string]Hash{}
 			for _, dep := range pkg.GxDependencies {
-				if todoByName[dep.Name] != nil {
-					depMap[dep.Name] = dep.Hash
+				if hash, ok := depMap[dep.Name]; ok {
+					return fmt.Errorf("duplicate dependency %s: %s %s", dep.Name, hash, dep.Hash)
 				}
+				depMap[dep.Name] = dep.Hash
 			}
 			todo.NewDeps = depMap
+			UpdateState(todoList, todoByName, orig)
+			if mode == "mark" && !todo.Published {
+				finalErr = fmt.Errorf("could not put %s in published state, run '%s status' for more info",
+					todo.Name, os.Args[0])
+			}
 		case "reset":
 			todo.NewHash = ""
 			todo.NewVersion = ""
 			todo.NewDeps = nil
+			UpdateState(todoList, todoByName, orig)
 		}
 	default:
 		return UsageErr()
 	}
-	UpdateState(todoList, todoByName)
 	err = todoList.Write()
 	if err != nil {
 		return err
 	}
-	return nil
+	return finalErr
 }
 
 var toPinCmd = Command{
@@ -610,7 +618,7 @@ func toPinCmdRun() error {
 			return UsageErr()
 		}
 	}
-	todoList, _, err := GetTodo()
+	todoList, _, _, err := GetTodo()
 	if err != nil {
 		return err
 	}
@@ -655,7 +663,7 @@ following subcommands are provided:
 }
 
 func metaCmdRun() error {
-	lst, byName, err := GetTodo()
+	lst, byName, _, err := GetTodo()
 	if err != nil {
 		return err
 	}

@@ -11,12 +11,14 @@ import (
 type PackageFile struct {
 	GxDependencies []PackageDep
 	Name           string
+	Version        string
 	Gx             PackageGx
 }
 
 type PackageDep struct {
-	Hash Hash
-	Name string
+	Hash    Hash
+	Name    string
+	Version string
 }
 
 type PackageGx struct {
